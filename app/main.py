@@ -2,9 +2,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database.database import engine, Base
 from app.api.v1 import devices, keywords, accounts
+import logging
 
-# 데이터베이스 테이블 생성
-Base.metadata.create_all(bind=engine)
+# 로깅 설정
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 데이터베이스 테이블 생성 (오류 발생 시 경고만 출력)
+try:
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created successfully")
+except Exception as e:
+    logger.warning(f"Could not create database tables: {e}")
+    logger.warning("Server will start without database connection. Please check DATABASE_URL environment variable.")
 
 app = FastAPI(
     title="Zero Server API",
@@ -40,7 +50,20 @@ def read_root():
 @app.get("/health")
 def health_check():
     """헬스 체크 엔드포인트"""
-    return {"status": "healthy"}
+    try:
+        # 데이터베이스 연결 테스트
+        from app.database.database import SessionLocal
+        db = SessionLocal()
+        db.execute("SELECT 1")
+        db.close()
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"disconnected: {str(e)}"
+    
+    return {
+        "status": "healthy",
+        "database": db_status
+    }
 
 
 @app.get("/zero/api/")
