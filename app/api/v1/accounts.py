@@ -86,3 +86,65 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
     db.delete(account)
     db.commit()
     return MessageResponse(message="Account deleted successfully")
+
+
+@router.get("/next", response_model=AccountResponse)
+def get_next_account(platform: str, db: Session = Depends(get_db)):
+    """
+    로테이션을 위한 다음 사용 가능한 계정 가져오기
+    
+    - 가장 오래 사용되지 않은 계정을 반환
+    - last_used가 NULL인 계정을 우선 반환
+    """
+    from sqlalchemy import or_
+    from datetime import datetime
+    
+    # 활성 상태이고 해당 플랫폼의 계정 중 가장 오래 사용되지 않은 계정 찾기
+    account = db.query(Account).filter(
+        Account.platform == platform,
+        Account.status == "active"
+    ).order_by(
+        Account.last_used.asc().nullsfirst()
+    ).first()
+    
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No available account for platform: {platform}"
+        )
+    
+    # last_used 업데이트
+    account.last_used = datetime.utcnow()
+    db.commit()
+    db.refresh(account)
+    
+    return account
+
+
+@router.post("/{account_id}/complete", response_model=MessageResponse)
+def complete_account_task(account_id: int, tasks_completed: int = 100, success: bool = True, db: Session = Depends(get_db)):
+    """
+    계정 작업 완료 보고
+    
+    - 작업이 완료되면 호출
+    - 실패한 경우 status를 inactive로 변경 가능
+    """
+    from datetime import datetime
+    
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account not found"
+        )
+    
+    # 작업 완료 시간 업데이트
+    account.last_used = datetime.utcnow()
+    
+    # 실패한 경우 상태 변경
+    if not success:
+        account.status = "inactive"
+    
+    db.commit()
+    
+    return MessageResponse(message=f"Account {account_id} task completed. Tasks: {tasks_completed}, Success: {success}")
