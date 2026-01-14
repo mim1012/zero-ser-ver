@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from app.database.database import engine, Base
-from app.api.v1 import devices, keywords, accounts, traffic, headers, devices_supabase
+from app.api.v1 import devices, keywords, accounts, traffic, headers, devices_supabase, dashboard
 import logging
 
 # 로깅 설정
@@ -38,6 +39,15 @@ app.include_router(accounts.router, prefix="/zero/api/v1")
 app.include_router(traffic.router, prefix="/zero/api/v1/traffic", tags=["traffic"])
 app.include_router(headers.router, prefix="/zero/api/v1/headers", tags=["headers"])
 app.include_router(devices_supabase.router, prefix="/zero/api/v1/devices", tags=["devices_supabase"])
+app.include_router(dashboard.router, prefix="/zero/api/v1/dashboard", tags=["Dashboard"])
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page():
+    """웹 대시보드 페이지"""
+    with open("app/templates/dashboard.html", "r", encoding="utf-8") as f:
+        html_content = f.read()
+    return HTMLResponse(content=html_content)
 
 
 @app.get("/")
