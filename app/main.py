@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database.database import engine, Base
-from app.api.v1 import devices, keywords, accounts
+from app.api.v1 import devices, keywords, accounts, traffic, headers, devices_supabase
 import logging
 
 # 로깅 설정
@@ -35,6 +35,9 @@ app.add_middleware(
 app.include_router(devices.router, prefix="/zero/api/v1")
 app.include_router(keywords.router, prefix="/zero/api/v1")
 app.include_router(accounts.router, prefix="/zero/api/v1")
+app.include_router(traffic.router, prefix="/zero/api/v1/traffic", tags=["traffic"])
+app.include_router(headers.router, prefix="/zero/api/v1/headers", tags=["headers"])
+app.include_router(devices_supabase.router, prefix="/zero/api/v1/devices", tags=["devices_supabase"])
 
 
 @app.get("/")
@@ -50,19 +53,27 @@ def read_root():
 @app.get("/health")
 def health_check():
     """헬스 체크 엔드포인트"""
+    # MySQL 데이터베이스 연결 테스트
     try:
-        # 데이터베이스 연결 테스트
         from app.database.database import SessionLocal
         db = SessionLocal()
         db.execute("SELECT 1")
         db.close()
-        db_status = "connected"
+        mysql_status = "connected"
     except Exception as e:
-        db_status = f"disconnected: {str(e)}"
+        mysql_status = f"disconnected: {str(e)}"
+    
+    # Supabase 연결 테스트
+    try:
+        from app.database.supabase_client import test_connection
+        supabase_status = "connected" if test_connection() else "disconnected"
+    except Exception as e:
+        supabase_status = f"disconnected: {str(e)}"
     
     return {
         "status": "healthy",
-        "database": db_status
+        "mysql": mysql_status,
+        "supabase": supabase_status
     }
 
 
