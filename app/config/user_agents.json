@@ -1,0 +1,22 @@
+{
+  "SM-G998N": [
+    {
+      "chrome_version": "143",
+      "user_agent": "Mozilla/5.0 (Linux; Android 13; SM-G998N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.7498.103 Mobile Safari/537.36"
+    },
+    {
+      "chrome_version": "142",
+      "user_agent": "Mozilla/5.0 (Linux; Android 13; SM-G998N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.7456.89 Mobile Safari/537.36"
+    }
+  ],
+  "SM-S918B": [
+    {
+      "chrome_version": "143",
+      "user_agent": "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.7498.103 Mobile Safari/537.36"
+    },
+    {
+      "chrome_version": "142",
+      "user_agent": "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.7456.89 Mobile Safari/537.36"
+    }
+  ]
+}

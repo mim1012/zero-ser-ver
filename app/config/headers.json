@@ -1,0 +1,28 @@
+{
+  "chrome_143": {
+    "sec-ch-ua": "\"Chromium\";v=\"143\", \"Google Chrome\";v=\"143\", \"Not_A Brand\";v=\"99\"",
+    "sec-ch-ua-mobile": "?1",
+    "sec-ch-ua-platform": "\"Android\"",
+    "sec-ch-ua-platform-version": "\"13.0\"",
+    "sec-ch-ua-model": "\"SM-G998N\"",
+    "sec-ch-ua-full-version-list": "\"Chromium\";v=\"143.0.7498.103\", \"Google Chrome\";v=\"143.0.7498.103\", \"Not_A Brand\";v=\"99.0.0.0\"",
+    "upgrade-insecure-requests": "1",
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "accept-encoding": "gzip, deflate, br, zstd",
+    "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "priority": "u=0, i"
+  },
+  "chrome_142": {
+    "sec-ch-ua": "\"Chromium\";v=\"142\", \"Google Chrome\";v=\"142\", \"Not_A Brand\";v=\"99\"",
+    "sec-ch-ua-mobile": "?1",
+    "sec-ch-ua-platform": "\"Android\"",
+    "sec-ch-ua-platform-version": "\"13.0\"",
+    "sec-ch-ua-model": "\"SM-G998N\"",
+    "sec-ch-ua-full-version-list": "\"Chromium\";v=\"142.0.7456.89\", \"Google Chrome\";v=\"142.0.7456.89\", \"Not_A Brand\";v=\"99.0.0.0\"",
+    "upgrade-insecure-requests": "1",
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "accept-encoding": "gzip, deflate, br, zstd",
+    "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "priority": "u=0, i"
+  }
+}

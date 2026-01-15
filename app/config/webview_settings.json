@@ -1,0 +1,15 @@
+{
+  "javascript_enabled": true,
+  "dom_storage_enabled": true,
+  "database_enabled": true,
+  "mixed_content_mode": "MIXED_CONTENT_ALWAYS_ALLOW",
+  "cache_mode": "LOAD_DEFAULT",
+  "allow_file_access": false,
+  "allow_content_access": true,
+  "support_zoom": false,
+  "builtin_zoom_controls": false,
+  "display_zoom_controls": false,
+  "use_wide_view_port": true,
+  "load_with_overview_mode": true,
+  "safe_browsing_enabled": false
+}

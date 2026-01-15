@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from app.database.database import engine, Base
-from app.api.v1 import devices, keywords, accounts, traffic, headers, devices_supabase, dashboard
+from app.api.v1 import devices, keywords, accounts, traffic, headers, devices_supabase, dashboard, config
 import logging
 
 # 로깅 설정
@@ -40,6 +40,7 @@ app.include_router(traffic.router, prefix="/zero/api/v1/traffic", tags=["traffic
 app.include_router(headers.router, prefix="/zero/api/v1/headers", tags=["headers"])
 app.include_router(devices_supabase.router, prefix="/zero/api/v1/devices", tags=["devices_supabase"])
 app.include_router(dashboard.router, prefix="/zero/api/v1/dashboard", tags=["Dashboard"])
+app.include_router(config.router, prefix="/zero/api/v1", tags=["config"])
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
