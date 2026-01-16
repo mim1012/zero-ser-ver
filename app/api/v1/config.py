@@ -91,14 +91,62 @@ async def get_user_agents_config(
 
 
 @router.get("/config/webview")
-async def get_webview_config():
+async def get_webview_config(
+    model: Optional[str] = None
+):
     """
     WebView 설정 조회
+    
+    Args:
+        model: 기기 모델 (예: "SM-G906", "SM-G998N")
+              None이면 전체 설정 반환
     
     Returns:
         WebView 설정 JSON
     """
-    return load_json_config(WEBVIEW_CONFIG_FILE)
+    # webview_config.json 파일 로드
+    webview_config_path = CONFIG_DIR / "webview_config.json"
+    
+    if not webview_config_path.exists():
+        # 파일이 없으면 기본 설정 반환
+        return load_json_config(WEBVIEW_CONFIG_FILE)
+    
+    try:
+        with open(webview_config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading WebView config: {str(e)}")
+    
+    if not model:
+        # 전체 설정 반환
+        return config
+    
+    # 기기별 설정 찾기
+    device_config = None
+    
+    # 1. 정확한 매칭 시도
+    if model in config.get("devices", {}):
+        device_config = config["devices"][model]
+    else:
+        # 2. 부분 매칭 시도 (예: "SM-G906" 또는 "G906" 모두 매칭)
+        for key in config.get("devices", {}).keys():
+            if key in model or model in key:
+                device_config = config["devices"][key]
+                break
+    
+    # 3. 매칭 실패 시 default 사용
+    if not device_config:
+        device_config = config.get("devices", {}).get("default", {})
+    
+    # 결과 구성
+    result = {
+        "model": model,
+        "package_name": config.get("package_name", "com.google.android.webview"),
+        "update_check_interval_hours": config.get("update_check_interval_hours", 24),
+        **device_config
+    }
+    
+    return result
 
 
 @router.get("/config/full")
