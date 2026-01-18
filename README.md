@@ -101,6 +101,59 @@ Railway는 MySQL 데이터베이스를 생성하면 다음 환경 변수를 자�
 
 예: `https://zero-server-production.up.railway.app`
 
+## 📁 프로젝트 구조
+
+```
+zero-ser-ver/
+├── app/                          # 서버 코드 (FastAPI)
+│   ├── api/                      # API 엔드포인트
+│   │   └── v1/
+│   │       ├── devices_supabase.py  # 기기 등록 및 관리
+│   │       ├── tasks.py             # 작업 할당
+│   │       └── config.py            # 설정 관리 (헤더, User-Agent, WebView)
+│   ├── config/                   # JSON 설정 파일
+│   │   ├── headers.json          # 브라우저 헤더 설정
+│   │   ├── user_agents.json      # User-Agent 목록
+│   │   ├── webview_settings.json # WebView 설정
+│   │   └── webview_config.json   # WebView 업데이트 설정
+│   └── main.py                   # FastAPI 메인 앱
+├── android/                      # Android 앱 코드 (Java)
+│   ├── ConfigManager.java        # 서버 설정 다운로드 및 캐시
+│   ├── CustomWebViewClient.java  # 서버 설정을 WebView에 적용
+│   ├── WebViewHelper.java        # WebView 초기화 헬퍼
+│   ├── WebviewUpdatePatternMessage.java  # WebView 업데이트 관리
+│   └── INTEGRATION_EXAMPLE.java  # 통합 예제 코드
+└── README.md                     # 이 파일
+```
+
+## 🚀 Option C: 서버 기반 동적 설정 관리
+
+이 프로젝트는 1500대 규모의 휴대폰 운영에 최적화된 **Option C (서버 기반 동적 설정 시스템)**을 구현합니다.
+
+### 핵심 기능
+
+- **헤더 관리**: `app/config/headers.json` 수정 → 즉시 반영 (APK 재배포 불필요)
+- **User-Agent 관리**: `app/config/user_agents.json` 수정 → 즉시 반영
+- **WebView 업데이트**: `app/config/webview_config.json` 수정 → 기기별 WebView 버전 제어
+- **역할 기반 작업 할당**: 서버 DB에서 대장봇/쫄병봇 역할을 동적으로 할당
+
+### 운영 예시: Chrome 144 헤더 업데이트
+
+```bash
+# app/config/headers.json 파일 수정
+{
+  "chrome_143": { ... },
+  "chrome_144": { "sec-ch-ua": "\"Chromium\";v=\"144\"..." }  # 추가
+}
+
+# GitHub에 푸시
+git add app/config/headers.json
+git commit -m "Add Chrome 144 headers"
+git push origin master
+
+# Railway가 자동으로 재배포 → 모든 기기에 즉시 반영 (APK 재배포 불필요)
+```
+
 ## 클라이언트 연동
 
 Android 클라이언트의 `build.gradle`에 다음과 같이 서버 URL을 추가합니다:
