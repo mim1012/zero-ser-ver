@@ -1,0 +1,153 @@
+{
+  "id": "route1-search-shopping",
+  "name": "검색 → 쇼핑탭 → 상품",
+  "version": 1,
+  "description": "m.naver.com에서 키워드 검색 후 쇼핑탭 클릭하여 N번째 상품 진입",
+  "variables": {
+    "keyword": "{{task.product_name}}",
+    "targetIndex": "{{task.target_index}}",
+    "mid": "{{task.nv_mid}}"
+  },
+  "steps": [
+    {
+      "id": "goto-home",
+      "action": "navigate",
+      "url": "https://m.naver.com/",
+      "waitUntil": "domcontentloaded",
+      "timeout": 30000
+    },
+    {
+      "id": "check-home",
+      "action": "checkStatus",
+      "onCaptcha": "solveCaptcha",
+      "onBlocked": "abort"
+    },
+    {
+      "id": "wait-home",
+      "action": "delay",
+      "ms": [1500, 2500]
+    },
+    {
+      "id": "snap-home",
+      "action": "log",
+      "message": "홈 접속 완료"
+    },
+    {
+      "id": "tap-search",
+      "action": "tap",
+      "selector": "#MM_SEARCH_FAKE",
+      "fallback": ".search_area"
+    },
+    {
+      "id": "wait-search-focus",
+      "action": "delay",
+      "ms": [800, 1200]
+    },
+    {
+      "id": "type-keyword",
+      "action": "humanType",
+      "selector": "#query",
+      "fallback": "input[name='query']",
+      "text": "{{keyword}}",
+      "charDelay": [60, 140],
+      "gapDelay": [20, 70]
+    },
+    {
+      "id": "wait-typing",
+      "action": "delay",
+      "ms": [500, 1000]
+    },
+    {
+      "id": "submit-search",
+      "action": "press",
+      "key": "Enter",
+      "waitNav": true,
+      "timeout": 20000
+    },
+    {
+      "id": "wait-results",
+      "action": "delay",
+      "ms": [2000, 3000]
+    },
+    {
+      "id": "check-results",
+      "action": "checkStatus",
+      "onCaptcha": "solveCaptcha",
+      "onBlocked": "abort"
+    },
+    {
+      "id": "log-search-done",
+      "action": "log",
+      "message": "검색 완료: {{keyword}}"
+    },
+    {
+      "id": "find-shopping-tab",
+      "action": "tap",
+      "selector": "a[href*='msearch.shopping.naver']",
+      "fallbackText": "쇼핑",
+      "removeTarget": true,
+      "waitNav": true,
+      "timeout": 20000
+    },
+    {
+      "id": "wait-shopping",
+      "action": "delay",
+      "ms": [2000, 3500]
+    },
+    {
+      "id": "check-shopping",
+      "action": "checkStatus",
+      "onCaptcha": "solveCaptcha",
+      "onBlocked": "abort"
+    },
+    {
+      "id": "scroll-survey",
+      "action": "scroll",
+      "distance": 2500,
+      "stepRange": [150, 350],
+      "stepDelay": [200, 400]
+    },
+    {
+      "id": "scroll-top",
+      "action": "scrollTo",
+      "y": 0
+    },
+    {
+      "id": "wait-scroll",
+      "action": "delay",
+      "ms": [800, 1200]
+    },
+    {
+      "id": "click-product",
+      "action": "clickProduct",
+      "index": "{{targetIndex}}",
+      "mid": "{{mid}}",
+      "excludePattern": "lst*(A|P|D)",
+      "useTouchscreen": true,
+      "waitNav": true,
+      "timeout": 30000
+    },
+    {
+      "id": "wait-product",
+      "action": "delay",
+      "ms": [2000, 3500]
+    },
+    {
+      "id": "check-product",
+      "action": "checkStatus",
+      "onCaptcha": "solveCaptcha"
+    },
+    {
+      "id": "dwell",
+      "action": "dwell",
+      "ms": [3000, 5000],
+      "scrollDist": 1500,
+      "scrollCount": [1, 2]
+    },
+    {
+      "id": "report-success",
+      "action": "report",
+      "status": "completed"
+    }
+  ]
+}

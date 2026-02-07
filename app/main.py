@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from app.database.database import engine, Base
 from app.api.v1 import devices, keywords, accounts, traffic, headers, devices_supabase, dashboard, config
+from app.api.v1 import scenario, script, captcha_proxy
 import logging
 
 # 로깅 설정
@@ -41,6 +42,11 @@ app.include_router(headers.router, prefix="/zero/api/v1/headers", tags=["headers
 app.include_router(devices_supabase.router, prefix="/zero/api/v1/devices", tags=["devices_supabase"])
 app.include_router(dashboard.router, prefix="/zero/api/v1/dashboard", tags=["Dashboard"])
 app.include_router(config.router, prefix="/zero/api/v1", tags=["config"])
+
+# v2: 시나리오 엔진 API
+app.include_router(scenario.router, prefix="/zero/api/v1", tags=["scenario"])
+app.include_router(script.router, prefix="/zero/api/v1", tags=["script"])
+app.include_router(captcha_proxy.router, prefix="/zero/api/v1", tags=["captcha"])
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
