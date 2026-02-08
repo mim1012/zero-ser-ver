@@ -99,27 +99,36 @@ public class ConfigManager {
                     .build();
             
             Response response = httpClient.newCall(request).execute();
-            if (!response.isSuccessful()) {
-                Log.e(TAG, "Server returned error: " + response.code());
-                return false;
+            try {
+                if (!response.isSuccessful()) {
+                    Log.e(TAG, "Server returned error: " + response.code());
+                    return false;
+                }
+
+                if (response.body() == null) {
+                    Log.e(TAG, "Server returned empty body");
+                    return false;
+                }
+
+                String jsonStr = response.body().string();
+                JSONObject newConfig = new JSONObject(jsonStr);
+
+                // 캐시 업데이트
+                cachedConfig = newConfig;
+                lastUpdateTime = System.currentTimeMillis();
+
+                // SharedPreferences에 저장
+                prefs.edit()
+                        .putString(KEY_CONFIG_JSON, jsonStr)
+                        .putLong(KEY_LAST_UPDATE, lastUpdateTime)
+                        .apply();
+
+                Log.i(TAG, "Config updated from server successfully");
+                return true;
+            } finally {
+                response.close();
             }
-            
-            String jsonStr = response.body().string();
-            JSONObject newConfig = new JSONObject(jsonStr);
-            
-            // 캐시 업데이트
-            cachedConfig = newConfig;
-            lastUpdateTime = System.currentTimeMillis();
-            
-            // SharedPreferences에 저장
-            prefs.edit()
-                    .putString(KEY_CONFIG_JSON, jsonStr)
-                    .putLong(KEY_LAST_UPDATE, lastUpdateTime)
-                    .apply();
-            
-            Log.i(TAG, "Config updated from server successfully");
-            return true;
-            
+
         } catch (IOException | JSONException e) {
             Log.e(TAG, "Failed to update config from server", e);
             return false;
