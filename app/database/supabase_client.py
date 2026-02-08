@@ -30,8 +30,8 @@ def test_connection() -> bool:
     """
     try:
         client = get_supabase()
-        # mobile_headers 테이블에서 1개 레코드 조회 (연결 테스트)
-        result = client.table('mobile_headers').select('id').limit(1).execute()
+        # distributedTasks 테이블에서 1개 레코드 조회 (연결 테스트)
+        result = client.table('distributedTasks').select('id').limit(1).execute()
         return True
     except Exception as e:
         print(f"Supabase 연결 실패: {str(e)}")
