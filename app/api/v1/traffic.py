@@ -18,14 +18,22 @@ router = APIRouter()
 
 class ClaimWorkRequest(BaseModel):
     device_id: str
-    
+
+class ClaimWorkBatchRequest(BaseModel):
+    device_id: str
+    batch_size: int = 10  # 기본값 10, 최대 50
+
 class ClaimWorkResponse(BaseModel):
     traffic_id: int
-    slot_id: int
+    slot_id: Optional[int] = 0
     product_name: str
     nv_mid: str
-    short_keyword: Optional[str]
-    target_url: Optional[str]
+    short_keyword: Optional[str] = None
+    target_url: Optional[str] = None
+
+class ClaimWorkBatchResponse(BaseModel):
+    tasks: list[ClaimWorkResponse]
+    total_claimed: int
 
 class CompleteWorkRequest(BaseModel):
     traffic_id: int
@@ -55,54 +63,116 @@ async def claim_work(request: ClaimWorkRequest):
     try:
         supabase = get_supabase()
         
-        # 1. pending 상태의 작업 1개 조회 (id 오름차순)
-        traffic_result = supabase.table('traffic_navershopping') \
-            .select('*, slot_naver(*)') \
+        # 1. pending 상태의 작업 1개 조회 (priority 높은 순서)
+        task_result = supabase.table('distributedTasks') \
+            .select('*') \
             .eq('status', 'pending') \
+            .order('priority', desc=True) \
             .order('id', desc=False) \
             .limit(1) \
             .execute()
-        
-        if not traffic_result.data:
+
+        if not task_result.data:
             raise HTTPException(status_code=404, detail="사용 가능한 작업이 없습니다")
-        
-        traffic = traffic_result.data[0]
-        traffic_id = traffic['id']
-        slot = traffic['slot_naver']
-        
-        # 2. 작업 상태 업데이트 (claimed)
-        supabase.table('traffic_navershopping') \
+
+        task = task_result.data[0]
+        task_id = task['id']
+
+        # 2. 작업 상태 업데이트 (assigned)
+        supabase.table('distributedTasks') \
             .update({
-                'status': 'claimed',
-                'claimed_by': request.device_id,
-                'claimed_at': datetime.now().isoformat(),
-                'updated_at': datetime.now().isoformat()
+                'status': 'assigned',
+                'assignedNodeId': request.device_id,
+                'assignedAt': datetime.now().isoformat()
             }) \
-            .eq('id', traffic_id) \
+            .eq('id', task_id) \
             .execute()
-        
-        # 3. task_logs에 기록
-        supabase.table('task_logs').insert({
-            'traffic_id': traffic_id,
-            'device_id': request.device_id,
-            'action': 'claim',
-            'message': f'작업 할당: {slot["product_name"]}'
-        }).execute()
-        
-        # 4. 응답 반환
+
+        # 3. 응답 반환
         return ClaimWorkResponse(
-            traffic_id=traffic_id,
-            slot_id=slot['id'],
-            product_name=slot['product_name'],
-            nv_mid=slot['nv_mid'],
-            short_keyword=slot.get('short_keyword'),
-            target_url=slot.get('target_url')
+            traffic_id=task_id,
+            slot_id=task.get('productId') or 0,
+            product_name=task.get('productName') or '',
+            nv_mid=task.get('nvMid') or '',
+            short_keyword=task.get('keyword') or '',
+            target_url=task.get('productUrl') or ''
         )
         
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"작업 할당 실패: {str(e)}")
+
+
+@router.post("/claim-work-batch", response_model=ClaimWorkBatchResponse)
+async def claim_work_batch(request: ClaimWorkBatchRequest):
+    """
+    배치 작업 가져오기
+
+    - status='pending'인 작업을 id 오름차순으로 batch_size개 가져옴
+    - 각 작업의 상태를 'claimed'로 변경 (원자적 처리)
+    - task_logs에 기록
+    - 최대 50개까지 가져올 수 있음
+
+    Returns:
+        - tasks: 할당된 작업 목록
+        - total_claimed: 실제 할당된 작업 개수
+    """
+    try:
+        supabase = get_supabase()
+
+        # batch_size 제한 (최대 50)
+        batch_size = min(request.batch_size, 50)
+        claimed_tasks = []
+
+        # 배치로 작업 가져오기 (루프 방식으로 원자적 처리)
+        for i in range(batch_size):
+            # 1. pending 상태의 작업 1개 조회 (priority 높은 순서)
+            task_result = supabase.table('distributedTasks') \
+                .select('*') \
+                .eq('status', 'pending') \
+                .order('priority', desc=True) \
+                .order('id', desc=False) \
+                .limit(1) \
+                .execute()
+
+            if not task_result.data:
+                # 더 이상 작업 없음
+                break
+
+            task = task_result.data[0]
+            task_id = task['id']
+
+            # 2. 작업 상태 업데이트 (assigned) - 원자적 업데이트
+            update_result = supabase.table('distributedTasks') \
+                .update({
+                    'status': 'assigned',
+                    'assignedNodeId': request.device_id,
+                    'assignedAt': datetime.now().isoformat()
+                }) \
+                .eq('id', task_id) \
+                .eq('status', 'pending') \
+                .execute()
+
+            # 3. 업데이트 성공한 경우만 리스트에 추가
+            if update_result.data:
+                claimed_tasks.append(ClaimWorkResponse(
+                    traffic_id=task_id,
+                    slot_id=task.get('productId') or 0,
+                    product_name=task.get('productName') or '',
+                    nv_mid=task.get('nvMid') or '',
+                    short_keyword=task.get('keyword') or '',
+                    target_url=task.get('productUrl') or ''
+                ))
+
+        # 5. 결과 반환
+        return ClaimWorkBatchResponse(
+            tasks=claimed_tasks,
+            total_claimed=len(claimed_tasks)
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"배치 작업 할당 실패: {str(e)}")
 
 
 @router.post("/complete")
@@ -119,36 +189,14 @@ async def complete_work(request: CompleteWorkRequest):
         supabase = get_supabase()
         
         # 1. 작업 상태 업데이트 (completed)
-        supabase.table('traffic_navershopping') \
+        supabase.table('distributedTasks') \
             .update({
                 'status': 'completed',
-                'completed_at': datetime.now().isoformat(),
-                'updated_at': datetime.now().isoformat()
+                'completedAt': datetime.now().isoformat(),
+                'result': str(request.metadata) if request.metadata else None
             }) \
             .eq('id', request.traffic_id) \
             .execute()
-        
-        # 2. devices 테이블의 tasks_completed 증가
-        device_result = supabase.table('devices') \
-            .select('tasks_completed') \
-            .eq('id', request.device_id) \
-            .execute()
-        
-        if device_result.data:
-            current_count = device_result.data[0]['tasks_completed']
-            supabase.table('devices') \
-                .update({'tasks_completed': current_count + 1}) \
-                .eq('id', request.device_id) \
-                .execute()
-        
-        # 3. task_logs에 기록
-        supabase.table('task_logs').insert({
-            'traffic_id': request.traffic_id,
-            'device_id': request.device_id,
-            'action': 'complete',
-            'message': '작업 완료',
-            'metadata': request.metadata
-        }).execute()
         
         return {"status": "success", "message": "작업 완료 처리됨"}
         
@@ -170,36 +218,13 @@ async def fail_work(request: FailWorkRequest):
         supabase = get_supabase()
         
         # 1. 작업 상태 업데이트 (failed)
-        supabase.table('traffic_navershopping') \
+        supabase.table('distributedTasks') \
             .update({
                 'status': 'failed',
-                'error_message': request.error_message,
-                'updated_at': datetime.now().isoformat()
+                'result': f'ERROR: {request.error_message}'
             }) \
             .eq('id', request.traffic_id) \
             .execute()
-        
-        # 2. devices 테이블의 tasks_failed 증가
-        device_result = supabase.table('devices') \
-            .select('tasks_failed') \
-            .eq('id', request.device_id) \
-            .execute()
-        
-        if device_result.data:
-            current_count = device_result.data[0]['tasks_failed']
-            supabase.table('devices') \
-                .update({'tasks_failed': current_count + 1}) \
-                .eq('id', request.device_id) \
-                .execute()
-        
-        # 3. task_logs에 기록
-        supabase.table('task_logs').insert({
-            'traffic_id': request.traffic_id,
-            'device_id': request.device_id,
-            'action': 'fail',
-            'message': f'작업 실패: {request.error_message}',
-            'metadata': request.metadata
-        }).execute()
         
         return {"status": "success", "message": "작업 실패 처리됨"}
         

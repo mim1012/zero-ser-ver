@@ -67,3 +67,15 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Android build
+.gradle/
+app/build/
+local.properties
+*.apk
+
+# Claude Code
+.claude/
+
+# Misc
+nul

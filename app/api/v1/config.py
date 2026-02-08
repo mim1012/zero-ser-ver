@@ -170,7 +170,7 @@ async def get_full_config(
     webview_config = load_json_config(WEBVIEW_CONFIG_FILE)
     
     # 기본 프로필 설정
-    profile_key = f"chrome_{chrome_version}" if chrome_version else "chrome_143"
+    profile_key = f"chrome_{chrome_version}" if chrome_version else "chrome_119"
     
     # 기기 모델별 User-Agent 선택
     user_agent = None

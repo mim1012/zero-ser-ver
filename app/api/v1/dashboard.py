@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 from datetime import datetime, timedelta
-from app.database.supabase_client import get_supabase_client
+from app.database.supabase_client import get_supabase
 
 router = APIRouter()
 
@@ -23,7 +23,7 @@ async def get_logs(
     - offset: 페이지네이션 오프셋
     """
     try:
-        supabase = get_supabase_client()
+        supabase = get_supabase()
         query = supabase.table("task_logs").select("*")
         
         if device_id:
@@ -62,7 +62,7 @@ async def get_stats_overview():
     - 총 그룹 수
     """
     try:
-        supabase = get_supabase_client()
+        supabase = get_supabase()
         
         # 작업 통계
         traffic_stats = supabase.table("traffic_navershopping").select("status", count="exact").execute()
@@ -118,7 +118,7 @@ async def get_device_stats():
     - 마지막 하트비트 시간
     """
     try:
-        supabase = get_supabase_client()
+        supabase = get_supabase()
         
         # 기기 정보 조회 (그룹 정보 포함)
         devices = supabase.table("devices").select("*, device_groups(name)").execute()
@@ -144,7 +144,7 @@ async def get_group_stats():
     - 그룹 상태
     """
     try:
-        supabase = get_supabase_client()
+        supabase = get_supabase()
         
         # 그룹 정보 조회
         groups = supabase.table("device_groups").select("*").execute()
@@ -194,7 +194,7 @@ async def get_task_stats(
     - 성공률
     """
     try:
-        supabase = get_supabase_client()
+        supabase = get_supabase()
         
         query = supabase.table("traffic_navershopping").select("*")
         

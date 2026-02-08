@@ -2,52 +2,52 @@
   "devices": {
     "SM-G906": {
       "app_type": 13,
-      "target_version": "110.0.5481.65",
-      "download_url": "https://your-cdn.com/webview/g906_v110.apk",
-      "force_update": false,
-      "description": "Galaxy S5 LTE-A (G906)"
+      "target_version": "119.0.6045.163",
+      "download_url": "https://your-cdn.com/webview/g906_v119.apk",
+      "force_update": true,
+      "description": "Galaxy S5 LTE-A (G906) - Android 8.0 + Chrome 119"
     },
     "SM-G900": {
       "app_type": 13,
-      "target_version": "110.0.5481.65",
-      "download_url": "https://your-cdn.com/webview/g900_v110.apk",
-      "force_update": false,
-      "description": "Galaxy S5 (G900)"
+      "target_version": "119.0.6045.163",
+      "download_url": "https://your-cdn.com/webview/g900_v119.apk",
+      "force_update": true,
+      "description": "Galaxy S5 (G900) - Android 8.0 + Chrome 119"
     },
     "SM-G930": {
       "app_type": 9,
-      "target_version": "120.0.6099.144",
-      "download_url": "https://your-cdn.com/webview/g930_v120.apk",
-      "force_update": false,
-      "description": "Galaxy S7 (G930)"
+      "target_version": "119.0.6045.163",
+      "download_url": "https://your-cdn.com/webview/g930_v119.apk",
+      "force_update": true,
+      "description": "Galaxy S7 (G930) - Android 8.0 + Chrome 119"
     },
     "SM-G998N": {
       "app_type": 14,
-      "target_version": "130.0.6723.86",
-      "download_url": "https://your-cdn.com/webview/g998_v130.apk",
+      "target_version": "119.0.6045.163",
+      "download_url": "https://your-cdn.com/webview/g998_v119.apk",
       "force_update": false,
       "description": "Galaxy S21 Ultra (G998N)"
     },
     "SM-S918B": {
       "app_type": 15,
-      "target_version": "130.0.6723.86",
-      "download_url": "https://your-cdn.com/webview/s918_v130.apk",
+      "target_version": "119.0.6045.163",
+      "download_url": "https://your-cdn.com/webview/s918_v119.apk",
       "force_update": false,
       "description": "Galaxy S23 Ultra (S918B)"
     },
     "SM-S928N": {
       "app_type": 15,
-      "target_version": "130.0.6723.86",
-      "download_url": "https://your-cdn.com/webview/s928_v130.apk",
+      "target_version": "119.0.6045.163",
+      "download_url": "https://your-cdn.com/webview/s928_v119.apk",
       "force_update": false,
       "description": "Galaxy S24 Ultra (S928N)"
     },
     "default": {
       "app_type": 5,
-      "target_version": "110.0.5481.65",
-      "download_url": "https://your-cdn.com/webview/default_v110.apk",
-      "force_update": false,
-      "description": "Default for all other devices"
+      "target_version": "119.0.6045.163",
+      "download_url": "https://your-cdn.com/webview/default_v119.apk",
+      "force_update": true,
+      "description": "Default - Android 8.0 + Chrome 119"
     }
   },
   "package_name": "com.google.android.webview",

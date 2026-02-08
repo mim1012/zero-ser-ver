@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AndroidManifest.xml 샘플
+
+  실제 프로젝트의 AndroidManifest.xml에 아래 내용을 추가하세요:
+  1. <uses-permission> 태그들
+  2. <service> 태그
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.zero.automation">
+
+    <!-- ============================================================ -->
+    <!-- 필수 권한 (Permissions)                                       -->
+    <!-- ============================================================ -->
+
+    <!-- 인터넷 접근 (서버 API 통신, WebView) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 네트워크 상태 확인 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Foreground Service 실행 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- Foreground Service - Data Sync (Android 14+) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Notification 표시 (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 화면 위에 오버레이 (백그라운드 WebView용, Android 6.0+) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- 부팅 시 자동 시작 (선택 사항) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- 백그라운드 실행 유지 (선택 사항) -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.AppCompat.Light">
+
+        <!-- ============================================================ -->
+        <!-- TrafficAutomationService 등록                               -->
+        <!-- ============================================================ -->
+
+        <service
+            android:name=".TrafficAutomationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false">
+
+            <!--
+              foregroundServiceType="dataSync"
+              - Android 14 (API 34)+ 필수
+              - 데이터 동기화 작업을 수행하는 Foreground Service
+            -->
+
+            <!--
+              stopWithTask="false"
+              - 앱이 최근 작업에서 제거되어도 서비스는 계속 실행
+            -->
+        </service>
+
+        <!-- ============================================================ -->
+        <!-- 부팅 시 자동 시작 Receiver (선택 사항)                        -->
+        <!-- ============================================================ -->
+
+        <!--
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        -->
+
+        <!-- ============================================================ -->
+        <!-- MainActivity (예시)                                          -->
+        <!-- ============================================================ -->
+
+        <!--
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        -->
+
+    </application>
+
+</manifest>
+
+<!--
+  ============================================================
+  사용 방법:
+  ============================================================
+
+  1. 실제 프로젝트의 AndroidManifest.xml 열기
+
+  2. <uses-permission> 태그들을 <manifest> 안에 추가:
+     - INTERNET
+     - ACCESS_NETWORK_STATE
+     - FOREGROUND_SERVICE
+     - FOREGROUND_SERVICE_DATA_SYNC
+     - POST_NOTIFICATIONS
+     - SYSTEM_ALERT_WINDOW (선택)
+     - RECEIVE_BOOT_COMPLETED (선택)
+     - WAKE_LOCK (선택)
+
+  3. <service> 태그를 <application> 안에 추가:
+     <service
+         android:name="com.zero.automation.TrafficAutomationService"
+         android:enabled="true"
+         android:exported="false"
+         android:foregroundServiceType="dataSync"
+         android:stopWithTask="false" />
+
+  4. 서비스 시작 (MainActivity 또는 원하는 곳에서):
+     Intent serviceIntent = new Intent(this, TrafficAutomationService.class);
+
+     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+         startForegroundService(serviceIntent);
+     } else {
+         startService(serviceIntent);
+     }
+
+  5. 서비스 중지:
+     Intent serviceIntent = new Intent(this, TrafficAutomationService.class);
+     stopService(serviceIntent);
+
+  ============================================================
+  런타임 권한 요청 (Android 6.0+):
+  ============================================================
+
+  MainActivity에서 런타임 권한 요청 필요:
+
+  // Android 13+ (API 33+): POST_NOTIFICATIONS
+  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      if (ContextCompat.checkSelfPermission(this,
+              Manifest.permission.POST_NOTIFICATIONS)
+              != PackageManager.PERMISSION_GRANTED) {
+          ActivityCompat.requestPermissions(this,
+              new String[]{Manifest.permission.POST_NOTIFICATIONS}, 100);
+      }
+  }
+
+  // Android 6.0+ (API 23+): SYSTEM_ALERT_WINDOW
+  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      if (!Settings.canDrawOverlays(this)) {
+          Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+              Uri.parse("package:" + getPackageName()));
+          startActivityForResult(intent, 200);
+      }
+  }
+
+  ============================================================
+-->

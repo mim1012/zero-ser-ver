@@ -30,7 +30,7 @@ public class ActivityMCloud extends AppCompatActivity {
         
         // 2. 서버에서 최신 설정 다운로드
         String deviceModel = Build.MODEL; // 예: "SM-G998N"
-        String chromeVersion = "143"; // 현재 WebView의 Chrome 버전
+        String chromeVersion = "119"; // 현재 WebView의 Chrome 버전
         
         // 백그라운드 스레드에서 설정 다운로드
         new Thread(() -> {
@@ -67,7 +67,7 @@ public class ActivityMCloud extends AppCompatActivity {
         // 6. 1시간마다 자동 업데이트
         if (configManager != null) {
             String deviceModel = Build.MODEL;
-            String chromeVersion = "143";
+            String chromeVersion = "119";
             
             new Thread(() -> {
                 configManager.autoUpdateIfNeeded(deviceModel, chromeVersion);

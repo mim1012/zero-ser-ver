@@ -1,4 +1,15 @@
 {
+  "chrome_119": {
+    "sec-ch-ua": "\"Google Chrome\";v=\"119\", \"Chromium\";v=\"119\", \"Not?A_Brand\";v=\"24\"",
+    "sec-ch-ua-mobile": "?1",
+    "sec-ch-ua-platform": "\"Android\"",
+    "sec-ch-ua-platform-version": "\"8.0.0\"",
+    "sec-ch-ua-full-version-list": "\"Google Chrome\";v=\"119.0.6045.163\", \"Chromium\";v=\"119.0.6045.163\", \"Not?A_Brand\";v=\"24.0.0.0\"",
+    "upgrade-insecure-requests": "1",
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    "accept-encoding": "gzip, deflate, br",
+    "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"
+  },
   "chrome_143": {
     "sec-ch-ua": "\"Chromium\";v=\"143\", \"Google Chrome\";v=\"143\", \"Not_A Brand\";v=\"99\"",
     "sec-ch-ua-mobile": "?1",
