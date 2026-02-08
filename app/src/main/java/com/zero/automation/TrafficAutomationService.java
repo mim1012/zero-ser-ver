@@ -23,7 +23,7 @@ public class TrafficAutomationService extends Service {
     private static final String CHANNEL_ID = "TrafficAutomationChannel";
     private static final String CHANNEL_NAME = "Traffic Automation";
 
-    private static final String SERVER_URL = "https://zero-server.railway.app";
+    private static final String SERVER_URL = "https://zero-ser-ver-production.up.railway.app";
 
     private WebView webView;
     private TaskExecutor taskExecutor;

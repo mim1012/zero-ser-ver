@@ -37,7 +37,7 @@ public class TrafficAutomationService extends Service {
     private static final String CHANNEL_NAME = "Traffic Automation";
 
     // 서버 설정 (TODO: 환경변수나 설정 파일로 분리)
-    private static final String SERVER_URL = "https://zero-server.railway.app";
+    private static final String SERVER_URL = "https://zero-ser-ver-production.up.railway.app";
 
     // 컴포넌트
     private WebView webView;
