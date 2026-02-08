@@ -1,401 +1,1031 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zero 트래픽 자동화 대시보드</title>
+    <title>Zero Control Panel</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --pico-primary: #0ea5a0;
+            --pico-primary-hover: #0d918d;
+            --accent: #0ea5a0;
+            --bg-card: #1a1d23;
+            --bg-surface: #22262e;
+            --bg-body: #13151a;
+            --text-primary: #e2e4e9;
+            --text-muted: #8b8f98;
+            --border-color: #2e323a;
+            --badge-pending: #d97706;
+            --badge-assigned: #3b82f6;
+            --badge-completed: #10b981;
+            --badge-failed: #ef4444;
+            --badge-paused: #8b5cf6;
         }
-        
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f5f5;
-            padding: 20px;
+            background: var(--bg-body);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            padding: 0;
+            margin: 0;
         }
-        
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
+
+        /* Header */
+        .top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 28px;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
-        
-        h1 {
-            color: #333;
-            margin-bottom: 30px;
-            font-size: 32px;
+        .top-bar h1 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+            color: var(--text-primary);
+            letter-spacing: -0.3px;
         }
-        
-        .stats-grid {
+        .top-bar-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .top-bar-actions span {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Tabs */
+        .tab-bar {
+            display: flex;
+            gap: 0;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 28px;
+        }
+        .tab-btn {
+            padding: 12px 22px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-muted);
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: color .15s, border-color .15s;
+        }
+        .tab-btn:hover { color: var(--text-primary); }
+        .tab-btn.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        .tab-content { display: none; padding: 24px 28px; }
+        .tab-content.active { display: block; }
+
+        /* Stats cards */
+        .stats-row {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            margin-bottom: 24px;
         }
-        
         .stat-card {
-            background: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 18px 20px;
         }
-        
-        .stat-card h3 {
-            color: #666;
+        .stat-card .label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .6px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+        .c-teal { color: var(--accent); }
+        .c-green { color: var(--badge-completed); }
+        .c-red { color: var(--badge-failed); }
+        .c-yellow { color: var(--badge-pending); }
+
+        /* Tables */
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .panel-header h3 {
             font-size: 14px;
             font-weight: 600;
-            margin-bottom: 10px;
-            text-transform: uppercase;
+            margin: 0;
         }
-        
-        .stat-value {
-            font-size: 36px;
-            font-weight: bold;
-            color: #2196F3;
-        }
-        
-        .stat-label {
-            color: #999;
-            font-size: 12px;
-            margin-top: 5px;
-        }
-        
-        .section {
-            background: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        
-        .section h2 {
-            color: #333;
-            margin-bottom: 20px;
-            font-size: 24px;
-            border-bottom: 2px solid #2196F3;
-            padding-bottom: 10px;
-        }
-        
+
         table {
             width: 100%;
             border-collapse: collapse;
+            font-size: 13px;
         }
-        
-        th, td {
-            padding: 12px;
+        thead th {
+            background: var(--bg-surface);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            padding: 10px 14px;
             text-align: left;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
         }
-        
-        th {
-            background-color: #f8f8f8;
+        tbody td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        tbody tr:hover { background: rgba(255,255,255,.02); }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 10px;
+            font-size: 11px;
             font-weight: 600;
-            color: #666;
-            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: .3px;
         }
-        
-        td {
-            color: #333;
-            font-size: 14px;
-        }
-        
-        .status-badge {
-            padding: 4px 12px;
-            border-radius: 12px;
+        .badge-pending   { background: rgba(217,119,6,.15);  color: var(--badge-pending);  }
+        .badge-assigned  { background: rgba(59,130,246,.15);  color: var(--badge-assigned); }
+        .badge-completed { background: rgba(16,185,129,.15);  color: var(--badge-completed);}
+        .badge-failed    { background: rgba(239,68,68,.15);   color: var(--badge-failed);   }
+        .badge-paused    { background: rgba(139,92,246,.15);  color: var(--badge-paused);   }
+        .badge-active    { background: rgba(16,185,129,.15);  color: var(--badge-completed);}
+        .badge-inactive  { background: rgba(139,92,246,.15);  color: var(--text-muted);     }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 7px 14px;
+            border-radius: 6px;
             font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .status-active {
-            background-color: #4CAF50;
-            color: white;
-        }
-        
-        .status-inactive {
-            background-color: #f44336;
-            color: white;
-        }
-        
-        .status-pending {
-            background-color: #FF9800;
-            color: white;
-        }
-        
-        .status-completed {
-            background-color: #2196F3;
-            color: white;
-        }
-        
-        .status-failed {
-            background-color: #f44336;
-            color: white;
-        }
-        
-        .refresh-btn {
-            background-color: #2196F3;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
+            font-weight: 500;
+            border: 1px solid var(--border-color);
+            background: var(--bg-surface);
+            color: var(--text-primary);
             cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 20px;
+            transition: background .15s;
+            white-space: nowrap;
         }
-        
-        .refresh-btn:hover {
-            background-color: #1976D2;
+        .btn:hover { background: var(--border-color); }
+        .btn-primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
         }
-        
-        .log-entry {
-            padding: 10px;
-            border-left: 3px solid #2196F3;
-            margin-bottom: 10px;
-            background-color: #f9f9f9;
+        .btn-primary:hover { background: var(--pico-primary-hover); }
+        .btn-danger {
+            border-color: var(--badge-failed);
+            color: var(--badge-failed);
         }
-        
-        .log-time {
-            color: #999;
+        .btn-danger:hover { background: rgba(239,68,68,.1); }
+        .btn-sm { padding: 4px 10px; font-size: 11px; }
+
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+        .toolbar .sep {
+            width: 1px;
+            height: 24px;
+            background: var(--border-color);
+            margin: 0 4px;
+        }
+        .toolbar select, .toolbar input[type="text"] {
+            padding: 7px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-surface);
+            color: var(--text-primary);
             font-size: 12px;
+            outline: none;
         }
-        
-        .log-message {
-            color: #333;
-            margin-top: 5px;
+        .toolbar select:focus, .toolbar input[type="text"]:focus {
+            border-color: var(--accent);
         }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 14px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* Dialog / Modal */
+        dialog {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0;
+            max-width: 520px;
+            width: 90%;
+        }
+        dialog::backdrop {
+            background: rgba(0,0,0,.6);
+        }
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+            font-size: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-body {
+            padding: 20px;
+        }
+        .modal-footer {
+            padding: 14px 20px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+        .form-group {
+            margin-bottom: 14px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-surface);
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            border-color: var(--accent);
+        }
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+            font-family: monospace;
+        }
+
+        /* Toast */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .toast {
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #fff;
+            animation: slideIn .25s ease;
+            max-width: 360px;
+        }
+        .toast-success { background: #059669; }
+        .toast-error   { background: #dc2626; }
+        .toast-info    { background: #2563eb; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to   { transform: translateX(0);   opacity: 1; }
+        }
+
+        /* Misc */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+        .checkbox-cell { width: 36px; text-align: center; }
+        .checkbox-cell input[type="checkbox"] { accent-color: var(--accent); }
+        .actions-cell { white-space: nowrap; }
+
+        /* Log entries */
+        .log-row td { font-size: 12px; }
+        .log-row .log-meta { color: var(--text-muted); }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🚀 Zero 트래픽 자동화 대시보드</h1>
-        
-        <button class="refresh-btn" onclick="loadData()">🔄 새로고침</button>
-        
-        <!-- 전체 통계 -->
-        <div class="stats-grid" id="statsGrid">
-            <div class="stat-card">
-                <h3>총 작업</h3>
-                <div class="stat-value" id="totalTasks">-</div>
-                <div class="stat-label">전체 작업 수</div>
-            </div>
-            <div class="stat-card">
-                <h3>완료</h3>
-                <div class="stat-value" id="completedTasks" style="color: #4CAF50;">-</div>
-                <div class="stat-label">완료된 작업</div>
-            </div>
-            <div class="stat-card">
-                <h3>실패</h3>
-                <div class="stat-value" id="failedTasks" style="color: #f44336;">-</div>
-                <div class="stat-label">실패한 작업</div>
-            </div>
-            <div class="stat-card">
-                <h3>성공률</h3>
-                <div class="stat-value" id="successRate" style="color: #FF9800;">-</div>
-                <div class="stat-label">작업 성공률</div>
-            </div>
-            <div class="stat-card">
-                <h3>총 기기</h3>
-                <div class="stat-value" id="totalDevices">-</div>
-                <div class="stat-label">등록된 기기 수</div>
-            </div>
-            <div class="stat-card">
-                <h3>활성 기기</h3>
-                <div class="stat-value" id="activeDevices" style="color: #4CAF50;">-</div>
-                <div class="stat-label">현재 활성 기기</div>
-            </div>
+
+<!-- Top Bar -->
+<div class="top-bar">
+    <h1>Zero Control Panel</h1>
+    <div class="top-bar-actions">
+        <span id="lastUpdate">-</span>
+        <button class="btn btn-sm" onclick="refreshCurrentTab()">Refresh</button>
+    </div>
+</div>
+
+<!-- Tab Bar -->
+<div class="tab-bar">
+    <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
+    <button class="tab-btn" data-tab="tasks" onclick="switchTab('tasks')">Tasks</button>
+    <button class="tab-btn" data-tab="devices" onclick="switchTab('devices')">Devices</button>
+    <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">Logs</button>
+</div>
+
+<!-- ==================== TAB: OVERVIEW ==================== -->
+<div id="tab-overview" class="tab-content active">
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="label">Total Tasks</div>
+            <div class="value c-teal" id="ov-total">-</div>
         </div>
-        
-        <!-- 기기 목록 -->
-        <div class="section">
-            <h2>📱 기기 목록</h2>
-            <table id="devicesTable">
-                <thead>
-                    <tr>
-                        <th>기기 ID</th>
-                        <th>역할</th>
-                        <th>그룹</th>
-                        <th>완료 작업</th>
-                        <th>현재 IP</th>
-                        <th>상태</th>
-                        <th>마지막 하트비트</th>
-                    </tr>
-                </thead>
-                <tbody id="devicesBody">
-                    <tr>
-                        <td colspan="7" style="text-align: center; color: #999;">데이터 로딩 중...</td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="stat-card">
+            <div class="label">Completed</div>
+            <div class="value c-green" id="ov-completed">-</div>
         </div>
-        
-        <!-- 그룹 목록 -->
-        <div class="section">
-            <h2>👥 그룹 목록</h2>
-            <table id="groupsTable">
-                <thead>
-                    <tr>
-                        <th>그룹 ID</th>
-                        <th>그룹 이름</th>
-                        <th>대장봇 ID</th>
-                        <th>총 기기</th>
-                        <th>활성 기기</th>
-                        <th>상태</th>
-                    </tr>
-                </thead>
-                <tbody id="groupsBody">
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: #999;">데이터 로딩 중...</td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="stat-card">
+            <div class="label">Failed</div>
+            <div class="value c-red" id="ov-failed">-</div>
         </div>
-        
-        <!-- 최근 로그 -->
-        <div class="section">
-            <h2>📋 최근 로그 (최근 50개)</h2>
-            <div id="logsContainer">
-                <div style="text-align: center; color: #999; padding: 20px;">데이터 로딩 중...</div>
+        <div class="stat-card">
+            <div class="label">Success Rate</div>
+            <div class="value c-yellow" id="ov-rate">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Total Devices</div>
+            <div class="value c-teal" id="ov-devices">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Active Devices</div>
+            <div class="value c-green" id="ov-active">-</div>
+        </div>
+    </div>
+
+    <!-- Groups summary -->
+    <div class="panel">
+        <div class="panel-header"><h3>Device Groups</h3></div>
+        <table>
+            <thead><tr>
+                <th>ID</th><th>Name</th><th>Leader</th><th>Devices</th><th>Active</th><th>Status</th>
+            </tr></thead>
+            <tbody id="ov-groups-body">
+                <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ==================== TAB: TASKS ==================== -->
+<div id="tab-tasks" class="tab-content">
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <button class="btn btn-primary" onclick="openCreateModal()">+ New Task</button>
+        <button class="btn" onclick="openBatchModal()">Batch Import</button>
+        <div class="sep"></div>
+        <button class="btn" onclick="bulkAction('reset_failed')">Reset Failed</button>
+        <button class="btn" onclick="bulkAction('delete_completed')">Clear Completed</button>
+        <button class="btn" onclick="bulkAction('pause_all')">Pause All</button>
+        <button class="btn" onclick="bulkAction('resume_all')">Resume All</button>
+        <div class="sep"></div>
+        <button class="btn btn-danger btn-sm" onclick="bulkAction('delete_selected')">Delete Selected</button>
+        <button class="btn btn-sm" onclick="bulkAction('reset_selected')">Reset Selected</button>
+        <div class="sep"></div>
+        <select id="filterStatus" onchange="taskPage=1;loadTasks()">
+            <option value="">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="assigned">Assigned</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+            <option value="paused">Paused</option>
+        </select>
+        <input type="text" id="filterSearch" placeholder="Search keyword..." onkeydown="if(event.key==='Enter'){taskPage=1;loadTasks();}">
+    </div>
+
+    <!-- Tasks table -->
+    <div class="panel">
+        <table>
+            <thead><tr>
+                <th class="checkbox-cell"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
+                <th>ID</th>
+                <th>Product</th>
+                <th>MID</th>
+                <th>Keyword</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Assigned</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr></thead>
+            <tbody id="tasks-body">
+                <tr><td colspan="10" class="empty-state">Select the Tasks tab to load data</td></tr>
+            </tbody>
+        </table>
+        <div class="pagination">
+            <button class="btn btn-sm" onclick="taskPage=Math.max(1,taskPage-1);loadTasks();">&lt; Prev</button>
+            <span id="pageInfo">1 / 1</span>
+            <button class="btn btn-sm" onclick="taskPage=Math.min(taskTotalPages,taskPage+1);loadTasks();">Next &gt;</button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== TAB: DEVICES ==================== -->
+<div id="tab-devices" class="tab-content">
+    <div class="panel">
+        <div class="panel-header"><h3>Registered Devices</h3></div>
+        <table>
+            <thead><tr>
+                <th>Device ID</th>
+                <th>Role</th>
+                <th>Group</th>
+                <th>Tasks Done</th>
+                <th>IP</th>
+                <th>Status</th>
+                <th>Last Heartbeat</th>
+                <th>Actions</th>
+            </tr></thead>
+            <tbody id="devices-body">
+                <tr><td colspan="8" class="empty-state">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ==================== TAB: LOGS ==================== -->
+<div id="tab-logs" class="tab-content">
+    <div class="toolbar">
+        <input type="text" id="logFilterDevice" placeholder="Device ID">
+        <input type="text" id="logFilterAction" placeholder="Action">
+        <input type="text" id="logFilterTraffic" placeholder="Traffic ID">
+        <button class="btn btn-sm" onclick="loadLogs()">Filter</button>
+    </div>
+    <div class="panel">
+        <table>
+            <thead><tr>
+                <th>Time</th><th>Device</th><th>Traffic ID</th><th>Action</th><th>Message</th>
+            </tr></thead>
+            <tbody id="logs-body">
+                <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ==================== MODALS ==================== -->
+
+<!-- Create Task Modal -->
+<dialog id="createModal">
+    <div class="modal-header">
+        <span>New Task</span>
+        <button class="btn btn-sm" onclick="closeModal('createModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+        <div class="form-group">
+            <label>Product Name</label>
+            <input type="text" id="c-productName">
+        </div>
+        <div class="form-group">
+            <label>NV MID</label>
+            <input type="text" id="c-nvMid">
+        </div>
+        <div class="form-group">
+            <label>Keyword</label>
+            <input type="text" id="c-keyword">
+        </div>
+        <div class="form-group">
+            <label>Product URL (optional)</label>
+            <input type="text" id="c-productUrl">
+        </div>
+        <div style="display:flex;gap:14px;">
+            <div class="form-group" style="flex:1">
+                <label>Priority</label>
+                <input type="number" id="c-priority" value="1" min="0">
+            </div>
+            <div class="form-group" style="flex:1">
+                <label>Repeat Count</label>
+                <input type="number" id="c-repeat" value="1" min="1" max="100">
             </div>
         </div>
     </div>
-    
-    <script>
-        const API_BASE = window.location.origin + '/zero/api/v1';
-        
-        async function loadData() {
-            await Promise.all([
-                loadStats(),
-                loadDevices(),
-                loadGroups(),
-                loadLogs()
-            ]);
+    <div class="modal-footer">
+        <button class="btn" onclick="closeModal('createModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitCreate()">Create</button>
+    </div>
+</dialog>
+
+<!-- Batch Import Modal -->
+<dialog id="batchModal">
+    <div class="modal-header">
+        <span>Batch Import (TSV)</span>
+        <button class="btn btn-sm" onclick="closeModal('batchModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+        <div class="form-group">
+            <label>Paste TSV: ProductName &#9; MID &#9; Keyword &#9; URL(opt)</label>
+            <textarea id="b-tsv" placeholder="Product A&#9;12345&#9;keyword1&#10;Product B&#9;67890&#9;keyword2&#9;https://..."></textarea>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button class="btn" onclick="closeModal('batchModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitBatch()">Import</button>
+    </div>
+</dialog>
+
+<!-- Edit Task Modal -->
+<dialog id="editModal">
+    <div class="modal-header">
+        <span>Edit Task <span id="e-id"></span></span>
+        <button class="btn btn-sm" onclick="closeModal('editModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+        <div class="form-group">
+            <label>Product Name</label>
+            <input type="text" id="e-productName">
+        </div>
+        <div class="form-group">
+            <label>NV MID</label>
+            <input type="text" id="e-nvMid">
+        </div>
+        <div class="form-group">
+            <label>Keyword</label>
+            <input type="text" id="e-keyword">
+        </div>
+        <div class="form-group">
+            <label>Product URL</label>
+            <input type="text" id="e-productUrl">
+        </div>
+        <div style="display:flex;gap:14px;">
+            <div class="form-group" style="flex:1">
+                <label>Priority</label>
+                <input type="number" id="e-priority" min="0">
+            </div>
+            <div class="form-group" style="flex:1">
+                <label>Status</label>
+                <select id="e-status">
+                    <option value="pending">pending</option>
+                    <option value="assigned">assigned</option>
+                    <option value="completed">completed</option>
+                    <option value="failed">failed</option>
+                    <option value="paused">paused</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button class="btn" onclick="closeModal('editModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitEdit()">Save</button>
+    </div>
+</dialog>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+const API = window.location.origin + '/zero/api/v1';
+
+// ============================================================
+// State
+// ============================================================
+let currentTab = 'overview';
+let taskPage = 1;
+let taskTotalPages = 1;
+let selectedIds = new Set();
+let editingId = null;
+let autoRefreshTimer = null;
+let cachedTasks = [];
+
+// ============================================================
+// Tab switching
+// ============================================================
+function switchTab(name) {
+    currentTab = name;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + name));
+    refreshCurrentTab();
+    resetAutoRefresh();
+}
+
+function refreshCurrentTab() {
+    if (currentTab === 'overview') loadOverview();
+    else if (currentTab === 'tasks') loadTasks();
+    else if (currentTab === 'devices') loadDevices();
+    else if (currentTab === 'logs') loadLogs();
+    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ko-KR');
+}
+
+function resetAutoRefresh() {
+    if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+    autoRefreshTimer = setInterval(refreshCurrentTab, 30000);
+}
+
+// ============================================================
+// Overview
+// ============================================================
+async function loadOverview() {
+    try {
+        const [statsRes, groupsRes] = await Promise.all([
+            fetch(`${API}/dashboard/stats/overview`),
+            fetch(`${API}/dashboard/stats/groups`)
+        ]);
+        const stats = await statsRes.json();
+        const groups = await groupsRes.json();
+
+        document.getElementById('ov-total').textContent = stats.tasks.total.toLocaleString();
+        document.getElementById('ov-completed').textContent = stats.tasks.completed.toLocaleString();
+        document.getElementById('ov-failed').textContent = stats.tasks.failed.toLocaleString();
+        const rate = stats.tasks.total > 0 ? (stats.tasks.completed / stats.tasks.total * 100).toFixed(1) : '0';
+        document.getElementById('ov-rate').textContent = rate + '%';
+        document.getElementById('ov-devices').textContent = stats.devices.total;
+        document.getElementById('ov-active').textContent = stats.devices.active;
+
+        const gb = document.getElementById('ov-groups-body');
+        if (!groups.groups || groups.groups.length === 0) {
+            gb.innerHTML = '<tr><td colspan="6" class="empty-state">No groups</td></tr>';
+        } else {
+            gb.innerHTML = groups.groups.map(g => `<tr>
+                <td>${g.id}</td>
+                <td>${g.name}</td>
+                <td>${g.leader_device_id || '-'}</td>
+                <td>${g.total_devices}</td>
+                <td>${g.active_devices}</td>
+                <td><span class="badge badge-${g.status === 'active' ? 'active' : 'inactive'}">${g.status}</span></td>
+            </tr>`).join('');
         }
-        
-        async function loadStats() {
-            try {
-                const response = await fetch(`${API_BASE}/dashboard/stats/overview`);
-                const data = await response.json();
-                
-                document.getElementById('totalTasks').textContent = data.tasks.total;
-                document.getElementById('completedTasks').textContent = data.tasks.completed;
-                document.getElementById('failedTasks').textContent = data.tasks.failed;
-                
-                const successRate = data.tasks.total > 0 
-                    ? (data.tasks.completed / data.tasks.total * 100).toFixed(1) 
-                    : 0;
-                document.getElementById('successRate').textContent = successRate + '%';
-                
-                document.getElementById('totalDevices').textContent = data.devices.total;
-                document.getElementById('activeDevices').textContent = data.devices.active;
-            } catch (error) {
-                console.error('통계 로딩 실패:', error);
-            }
+    } catch (e) {
+        console.error('Overview load error:', e);
+    }
+}
+
+// ============================================================
+// Tasks
+// ============================================================
+async function loadTasks() {
+    try {
+        const status = document.getElementById('filterStatus').value;
+        const search = document.getElementById('filterSearch').value;
+        const params = new URLSearchParams({ page: taskPage, limit: 50 });
+        if (status) params.set('status', status);
+        if (search) params.set('search', search);
+
+        const res = await fetch(`${API}/admin/tasks?${params}`);
+        const data = await res.json();
+        taskTotalPages = data.total_pages;
+        cachedTasks = data.tasks || [];
+        document.getElementById('pageInfo').textContent = `${data.page} / ${data.total_pages} (${data.total})`;
+
+        selectedIds.clear();
+        document.getElementById('selectAll').checked = false;
+
+        const tbody = document.getElementById('tasks-body');
+        if (!data.tasks || data.tasks.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No tasks found</td></tr>';
+            return;
         }
-        
-        async function loadDevices() {
-            try {
-                const response = await fetch(`${API_BASE}/dashboard/stats/devices`);
-                const data = await response.json();
-                
-                const tbody = document.getElementById('devicesBody');
-                tbody.innerHTML = '';
-                
-                if (data.devices.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #999;">등록된 기기가 없습니다.</td></tr>';
-                    return;
-                }
-                
-                data.devices.forEach(device => {
-                    const isActive = new Date(device.last_heartbeat) > new Date(Date.now() - 5 * 60 * 1000);
-                    const statusClass = isActive ? 'status-active' : 'status-inactive';
-                    const statusText = isActive ? '활성' : '비활성';
-                    
-                    const row = `
-                        <tr>
-                            <td>${device.id}</td>
-                            <td><strong>${device.role === 'leader' ? '🎖️ 대장봇' : '⚔️ 쫄병봇'}</strong></td>
-                            <td>${device.device_groups?.name || '-'}</td>
-                            <td>${device.tasks_completed}</td>
-                            <td>${device.current_ip || '-'}</td>
-                            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                            <td>${new Date(device.last_heartbeat).toLocaleString('ko-KR')}</td>
-                        </tr>
-                    `;
-                    tbody.innerHTML += row;
-                });
-            } catch (error) {
-                console.error('기기 목록 로딩 실패:', error);
-            }
+
+        tbody.innerHTML = data.tasks.map(t => `<tr>
+            <td class="checkbox-cell"><input type="checkbox" value="${t.id}" onchange="toggleSelect(${t.id}, this.checked)"></td>
+            <td>${t.id}</td>
+            <td title="${esc(t.productName || '')}">${esc(t.productName || '-')}</td>
+            <td>${esc(t.nvMid || '-')}</td>
+            <td>${esc(t.keyword || '-')}</td>
+            <td>${t.priority ?? 1}</td>
+            <td><span class="badge badge-${t.status || 'pending'}">${t.status || 'pending'}</span></td>
+            <td>${esc(t.assignedNodeId || '-')}</td>
+            <td>${t.created_at ? new Date(t.created_at).toLocaleDateString('ko-KR') : '-'}</td>
+            <td class="actions-cell">
+                <button class="btn btn-sm" onclick="openEditModal(${t.id})">Edit</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteTask(${t.id})">Del</button>
+            </td>
+        </tr>`).join('');
+    } catch (e) {
+        console.error('Tasks load error:', e);
+    }
+}
+
+function toggleSelect(id, checked) {
+    if (checked) selectedIds.add(id); else selectedIds.delete(id);
+}
+
+function toggleSelectAll(el) {
+    document.querySelectorAll('#tasks-body input[type="checkbox"]').forEach(cb => {
+        cb.checked = el.checked;
+        toggleSelect(parseInt(cb.value), el.checked);
+    });
+}
+
+// ============================================================
+// Task CRUD
+// ============================================================
+function openCreateModal() {
+    document.getElementById('c-productName').value = '';
+    document.getElementById('c-nvMid').value = '';
+    document.getElementById('c-keyword').value = '';
+    document.getElementById('c-productUrl').value = '';
+    document.getElementById('c-priority').value = '1';
+    document.getElementById('c-repeat').value = '1';
+    document.getElementById('createModal').showModal();
+}
+
+async function submitCreate() {
+    const body = {
+        productName: document.getElementById('c-productName').value,
+        nvMid: document.getElementById('c-nvMid').value,
+        keyword: document.getElementById('c-keyword').value,
+        productUrl: document.getElementById('c-productUrl').value || null,
+        priority: parseInt(document.getElementById('c-priority').value) || 1,
+        repeat_count: parseInt(document.getElementById('c-repeat').value) || 1,
+    };
+    if (!body.productName || !body.nvMid || !body.keyword) {
+        toast('Product Name, MID, Keyword are required', 'error');
+        return;
+    }
+    try {
+        const res = await fetch(`${API}/admin/tasks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (res.ok) {
+            toast(`Created ${data.created} task(s)`, 'success');
+            closeModal('createModal');
+            loadTasks();
+        } else {
+            toast(data.detail || 'Create failed', 'error');
         }
-        
-        async function loadGroups() {
-            try {
-                const response = await fetch(`${API_BASE}/dashboard/stats/groups`);
-                const data = await response.json();
-                
-                const tbody = document.getElementById('groupsBody');
-                tbody.innerHTML = '';
-                
-                if (data.groups.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">생성된 그룹이 없습니다.</td></tr>';
-                    return;
-                }
-                
-                data.groups.forEach(group => {
-                    const statusClass = group.status === 'active' ? 'status-active' : 'status-inactive';
-                    const statusText = group.status === 'active' ? '활성' : '비활성';
-                    
-                    const row = `
-                        <tr>
-                            <td>${group.id}</td>
-                            <td><strong>${group.name}</strong></td>
-                            <td>${group.leader_device_id || '-'}</td>
-                            <td>${group.total_devices}</td>
-                            <td>${group.active_devices}</td>
-                            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                        </tr>
-                    `;
-                    tbody.innerHTML += row;
-                });
-            } catch (error) {
-                console.error('그룹 목록 로딩 실패:', error);
-            }
+    } catch (e) {
+        toast('Network error', 'error');
+    }
+}
+
+function openBatchModal() {
+    document.getElementById('b-tsv').value = '';
+    document.getElementById('batchModal').showModal();
+}
+
+async function submitBatch() {
+    const tsv = document.getElementById('b-tsv').value;
+    if (!tsv.trim()) { toast('Paste TSV data', 'error'); return; }
+    try {
+        const res = await fetch(`${API}/admin/tasks/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tsv })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            let msg = `Created ${data.created} task(s)`;
+            if (data.errors && data.errors.length) msg += ` (${data.errors.length} errors)`;
+            toast(msg, 'success');
+            closeModal('batchModal');
+            loadTasks();
+        } else {
+            toast(data.detail || 'Batch failed', 'error');
         }
-        
-        async function loadLogs() {
-            try {
-                const response = await fetch(`${API_BASE}/dashboard/logs?limit=50`);
-                const data = await response.json();
-                
-                const container = document.getElementById('logsContainer');
-                container.innerHTML = '';
-                
-                if (data.logs.length === 0) {
-                    container.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">로그가 없습니다.</div>';
-                    return;
-                }
-                
-                data.logs.forEach(log => {
-                    const logEntry = `
-                        <div class="log-entry">
-                            <div class="log-time">${new Date(log.created_at).toLocaleString('ko-KR')} | ${log.device_id} | ${log.action}</div>
-                            <div class="log-message">${log.message}</div>
-                        </div>
-                    `;
-                    container.innerHTML += logEntry;
-                });
-            } catch (error) {
-                console.error('로그 로딩 실패:', error);
-            }
+    } catch (e) {
+        toast('Network error', 'error');
+    }
+}
+
+function openEditModal(id) {
+    editingId = id;
+    const task = cachedTasks.find(t => t.id === id);
+    if (!task) { toast('Task not found in current page', 'error'); return; }
+
+    document.getElementById('e-id').textContent = '#' + id;
+    document.getElementById('e-productName').value = task.productName || '';
+    document.getElementById('e-nvMid').value = task.nvMid || '';
+    document.getElementById('e-keyword').value = task.keyword || '';
+    document.getElementById('e-productUrl').value = task.productUrl || '';
+    document.getElementById('e-priority').value = task.priority ?? 1;
+    document.getElementById('e-status').value = task.status || 'pending';
+    document.getElementById('editModal').showModal();
+}
+
+async function submitEdit() {
+    const body = {
+        productName: document.getElementById('e-productName').value || null,
+        nvMid: document.getElementById('e-nvMid').value || null,
+        keyword: document.getElementById('e-keyword').value || null,
+        productUrl: document.getElementById('e-productUrl').value || null,
+        priority: parseInt(document.getElementById('e-priority').value) || null,
+        status: document.getElementById('e-status').value || null,
+    };
+    try {
+        const res = await fetch(`${API}/admin/tasks/${editingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (res.ok) {
+            toast('Task updated', 'success');
+            closeModal('editModal');
+            loadTasks();
+        } else {
+            toast(data.detail || 'Update failed', 'error');
         }
-        
-        // 페이지 로드 시 데이터 로딩
-        loadData();
-        
-        // 30초마다 자동 새로고침
-        setInterval(loadData, 30000);
-    </script>
+    } catch (e) {
+        toast('Network error', 'error');
+    }
+}
+
+async function deleteTask(id) {
+    if (!confirm(`Delete task #${id}?`)) return;
+    try {
+        const res = await fetch(`${API}/admin/tasks/${id}`, { method: 'DELETE' });
+        if (res.ok) { toast('Task deleted', 'success'); loadTasks(); }
+        else { const d = await res.json(); toast(d.detail || 'Delete failed', 'error'); }
+    } catch (e) {
+        toast('Network error', 'error');
+    }
+}
+
+async function bulkAction(action) {
+    const needsSelection = ['delete_selected', 'reset_selected'];
+    let ids = null;
+    if (needsSelection.includes(action)) {
+        ids = Array.from(selectedIds);
+        if (ids.length === 0) { toast('Select tasks first', 'error'); return; }
+    }
+
+    const labels = {
+        reset_failed: 'Reset all failed tasks?',
+        delete_completed: 'Delete all completed tasks?',
+        pause_all: 'Pause all pending tasks?',
+        resume_all: 'Resume all paused tasks?',
+        delete_selected: `Delete ${selectedIds.size} selected tasks?`,
+        reset_selected: `Reset ${selectedIds.size} selected tasks?`,
+    };
+    if (!confirm(labels[action] || `Execute ${action}?`)) return;
+
+    try {
+        const res = await fetch(`${API}/admin/tasks/bulk-action`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, task_ids: ids })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            toast(`${action}: ${data.affected} affected`, 'success');
+            loadTasks();
+        } else {
+            toast(data.detail || 'Action failed', 'error');
+        }
+    } catch (e) {
+        toast('Network error', 'error');
+    }
+}
+
+// ============================================================
+// Devices
+// ============================================================
+async function loadDevices() {
+    try {
+        const res = await fetch(`${API}/admin/devices`);
+        const data = await res.json();
+        const tbody = document.getElementById('devices-body');
+
+        if (!data.devices || data.devices.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No devices registered</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.devices.map(d => {
+            const isActive = d.last_heartbeat && new Date(d.last_heartbeat) > new Date(Date.now() - 5 * 60 * 1000);
+            const statusCls = isActive ? 'active' : 'inactive';
+            const statusTxt = isActive ? 'Active' : 'Inactive';
+            const groupName = d.device_groups?.name || '-';
+            return `<tr>
+                <td>${esc(d.id)}</td>
+                <td>${d.role === 'leader' ? 'Leader' : 'Follower'}</td>
+                <td>${esc(groupName)}</td>
+                <td>${d.tasks_completed || 0}</td>
+                <td>${d.current_ip || '-'}</td>
+                <td><span class="badge badge-${statusCls}">${statusTxt}</span></td>
+                <td>${d.last_heartbeat ? new Date(d.last_heartbeat).toLocaleString('ko-KR') : '-'}</td>
+                <td><button class="btn btn-sm btn-danger" onclick="removeDevice('${esc(d.id)}')">Remove</button></td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        console.error('Devices load error:', e);
+    }
+}
+
+async function removeDevice(id) {
+    if (!confirm(`Remove device "${id}"?`)) return;
+    try {
+        const res = await fetch(`${API}/admin/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (res.ok) { toast('Device removed', 'success'); loadDevices(); }
+        else { const d = await res.json(); toast(d.detail || 'Remove failed', 'error'); }
+    } catch (e) {
+        toast('Network error', 'error');
+    }
+}
+
+// ============================================================
+// Logs
+// ============================================================
+async function loadLogs() {
+    try {
+        const params = new URLSearchParams({ limit: 100 });
+        const device = document.getElementById('logFilterDevice').value;
+        const action = document.getElementById('logFilterAction').value;
+        const traffic = document.getElementById('logFilterTraffic').value;
+        if (device) params.set('device_id', device);
+        if (action) params.set('action', action);
+        if (traffic) params.set('traffic_id', traffic);
+
+        const res = await fetch(`${API}/dashboard/logs?${params}`);
+        const data = await res.json();
+        const tbody = document.getElementById('logs-body');
+
+        if (!data.logs || data.logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No logs found</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.logs.map(l => `<tr class="log-row">
+            <td>${l.created_at ? new Date(l.created_at).toLocaleString('ko-KR') : '-'}</td>
+            <td>${esc(l.device_id || '-')}</td>
+            <td>${l.traffic_id || '-'}</td>
+            <td><span class="badge badge-assigned">${esc(l.action || '-')}</span></td>
+            <td title="${esc(l.message || '')}">${esc(l.message || '-')}</td>
+        </tr>`).join('');
+    } catch (e) {
+        console.error('Logs load error:', e);
+    }
+}
+
+// ============================================================
+// Utils
+// ============================================================
+function openModal(id) { document.getElementById(id).showModal(); }
+function closeModal(id) { document.getElementById(id).close(); }
+
+function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+function toast(msg, type) {
+    const c = document.getElementById('toastContainer');
+    const el = document.createElement('div');
+    el.className = `toast toast-${type || 'info'}`;
+    el.textContent = msg;
+    c.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+}
+
+// ============================================================
+// Init
+// ============================================================
+loadOverview();
+resetAutoRefresh();
+</script>
 </body>
 </html>
