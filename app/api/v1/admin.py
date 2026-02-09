@@ -272,15 +272,17 @@ async def list_devices():
     try:
         supabase = get_supabase()
         try:
-            result = supabase.table("devices") \
-                .select("*, device_groups(name)") \
-                .execute()
+            result = supabase.table("devices").select("*, device_groups(name)").execute()
+            return {"devices": result.data}
         except Exception:
+            pass
+        try:
             result = supabase.table("devices").select("*").execute()
-        return {"devices": result.data}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"기기 조회 실패: {str(e)}")
+            return {"devices": result.data}
+        except Exception:
+            return {"devices": []}
+    except Exception:
+        return {"devices": []}
 
 
 @router.delete("/devices/{device_id}")

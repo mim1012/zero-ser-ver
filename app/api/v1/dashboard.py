@@ -129,19 +129,19 @@ async def get_device_stats():
     """
     try:
         supabase = get_supabase()
-
-        # 기기 정보 조회 (그룹 정보 포함, 조인 실패 시 단독 조회)
         try:
             devices = supabase.table("devices").select("*, device_groups(name)").execute()
+            return {"devices": devices.data}
         except Exception:
+            pass
+        try:
             devices = supabase.table("devices").select("*").execute()
-
-        return {
-            "devices": devices.data
-        }
+            return {"devices": devices.data}
+        except Exception:
+            return {"devices": []}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"기기 통계 조회 실패: {str(e)}")
+        return {"devices": []}
 
 
 @router.get("/stats/groups")
@@ -158,36 +158,35 @@ async def get_group_stats():
     """
     try:
         supabase = get_supabase()
-        
-        # 그룹 정보 조회
         groups = supabase.table("device_groups").select("*").execute()
-        
+
         group_stats = []
         for group in groups.data:
-            # 그룹에 속한 기기 수
-            devices = supabase.table("devices").select("*", count="exact").eq("group_id", group["id"]).execute()
-            total_devices = len(devices.data)
-            
-            # 활성 기기 수 (최근 5분 이내 하트비트)
-            five_minutes_ago = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
-            active_devices = supabase.table("devices").select("*", count="exact").eq("group_id", group["id"]).gte("last_heartbeat", five_minutes_ago).execute()
-            
+            try:
+                devices = supabase.table("devices").select("id", count="exact").eq("group_id", group["id"]).execute()
+                total_devices = devices.count if devices.count is not None else len(devices.data)
+
+                five_minutes_ago = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
+                active_devices = supabase.table("devices").select("id", count="exact").eq("group_id", group["id"]).gte("last_heartbeat", five_minutes_ago).execute()
+                active_count = active_devices.count if active_devices.count is not None else len(active_devices.data)
+            except Exception:
+                total_devices = 0
+                active_count = 0
+
             group_stats.append({
                 "id": group["id"],
                 "name": group["name"],
-                "leader_device_id": group["leader_device_id"],
-                "status": group["status"],
+                "leader_device_id": group.get("leader_device_id"),
+                "status": group.get("status", "active"),
                 "total_devices": total_devices,
-                "active_devices": len(active_devices.data),
-                "created_at": group["created_at"]
+                "active_devices": active_count,
+                "created_at": group.get("created_at")
             })
-        
-        return {
-            "groups": group_stats
-        }
-        
+
+        return {"groups": group_stats}
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"그룹 통계 조회 실패: {str(e)}")
+        return {"groups": []}
 
 
 @router.get("/stats/tasks")
