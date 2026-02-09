@@ -64,40 +64,50 @@ async def get_stats_overview():
     try:
         supabase = get_supabase()
         
-        # 작업 통계
-        traffic_stats = supabase.table("traffic_navershopping").select("status", count="exact").execute()
-        total_tasks = len(traffic_stats.data)
-        
-        completed_tasks = supabase.table("traffic_navershopping").select("*", count="exact").eq("status", "completed").execute()
-        failed_tasks = supabase.table("traffic_navershopping").select("*", count="exact").eq("status", "failed").execute()
-        pending_tasks = supabase.table("traffic_navershopping").select("*", count="exact").eq("status", "pending").execute()
-        
+        # 작업 통계 (distributedTasks 테이블)
+        all_tasks = supabase.table("distributedTasks").select("status", count="exact").execute()
+        total_tasks = all_tasks.count if all_tasks.count is not None else len(all_tasks.data)
+
+        completed_tasks = supabase.table("distributedTasks").select("id", count="exact").eq("status", "completed").execute()
+        failed_tasks = supabase.table("distributedTasks").select("id", count="exact").eq("status", "failed").execute()
+        pending_tasks = supabase.table("distributedTasks").select("id", count="exact").eq("status", "pending").execute()
+
+        completed_count = completed_tasks.count if completed_tasks.count is not None else len(completed_tasks.data)
+        failed_count = failed_tasks.count if failed_tasks.count is not None else len(failed_tasks.data)
+        pending_count = pending_tasks.count if pending_tasks.count is not None else len(pending_tasks.data)
+
         # 기기 통계
-        devices = supabase.table("devices").select("*", count="exact").execute()
-        total_devices = len(devices.data)
-        
-        # 활성 기기 (최근 5분 이내 하트비트)
-        five_minutes_ago = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
-        active_devices = supabase.table("devices").select("*", count="exact").gte("last_heartbeat", five_minutes_ago).execute()
-        
-        # 그룹 통계
-        groups = supabase.table("device_groups").select("*", count="exact").execute()
-        
+        total_devices = 0
+        active_count = 0
+        groups_count = 0
+        try:
+            devices = supabase.table("devices").select("id", count="exact").execute()
+            total_devices = devices.count if devices.count is not None else len(devices.data)
+
+            five_minutes_ago = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
+            active_devices = supabase.table("devices").select("id", count="exact").gte("last_heartbeat", five_minutes_ago).execute()
+            active_count = active_devices.count if active_devices.count is not None else len(active_devices.data)
+
+            groups = supabase.table("device_groups").select("id", count="exact").execute()
+            groups_count = groups.count if groups.count is not None else len(groups.data)
+        except Exception:
+            pass
+
         return {
             "tasks": {
                 "total": total_tasks,
-                "completed": len(completed_tasks.data),
-                "failed": len(failed_tasks.data),
-                "pending": len(pending_tasks.data),
-                "in_progress": total_tasks - len(completed_tasks.data) - len(failed_tasks.data) - len(pending_tasks.data)
+                "completed": completed_count,
+                "failed": failed_count,
+                "pending": pending_count,
+                "in_progress": total_tasks - completed_count - failed_count - pending_count
             },
             "devices": {
                 "total": total_devices,
-                "active": len(active_devices.data),
-                "inactive": total_devices - len(active_devices.data)
+                "active": active_count,
+                "inactive": total_devices - active_count
             },
             "groups": {
-                "total": len(groups.data)
+                "total": groups_count
             }
         }
         
@@ -119,14 +129,17 @@ async def get_device_stats():
     """
     try:
         supabase = get_supabase()
-        
-        # 기기 정보 조회 (그룹 정보 포함)
-        devices = supabase.table("devices").select("*, device_groups(name)").execute()
-        
+
+        # 기기 정보 조회 (그룹 정보 포함, 조인 실패 시 단독 조회)
+        try:
+            devices = supabase.table("devices").select("*, device_groups(name)").execute()
+        except Exception:
+            devices = supabase.table("devices").select("*").execute()
+
         return {
             "devices": devices.data
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"기기 통계 조회 실패: {str(e)}")
 
@@ -196,7 +209,7 @@ async def get_task_stats(
     try:
         supabase = get_supabase()
         
-        query = supabase.table("traffic_navershopping").select("*")
+        query = supabase.table("distributedTasks").select("*")
         
         if start_date:
             query = query.gte("created_at", start_date)

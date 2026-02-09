@@ -271,9 +271,12 @@ async def list_devices():
     """기기 목록 (group_name 포함)"""
     try:
         supabase = get_supabase()
-        result = supabase.table("devices") \
-            .select("*, device_groups(name)") \
-            .execute()
+        try:
+            result = supabase.table("devices") \
+                .select("*, device_groups(name)") \
+                .execute()
+        except Exception:
+            result = supabase.table("devices").select("*").execute()
         return {"devices": result.data}
 
     except Exception as e:
