@@ -1,14 +1,14 @@
 """
-트래픽 작업 관리 API
-- 작업 가져오기 (claim-work)
-- 작업 완료 보고 (complete)
-- 작업 실패 보고 (fail)
+트래픽 작업 관리 API (Production DB 기반)
+- claim-work: traffic_navershopping-test에서 1건 꺼내고 DELETE (소비형 큐)
+- complete: slot_navertest.success_count 증가 + history INSERT
+- fail: slot_navertest.fail_count 증가 + history INSERT
 """
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from datetime import datetime
-from app.database.supabase_client import get_supabase
+from app.database.supabase_client import get_supabase_production
 
 router = APIRouter()
 
@@ -24,12 +24,12 @@ class ClaimWorkBatchRequest(BaseModel):
     batch_size: int = 10  # 기본값 10, 최대 50
 
 class ClaimWorkResponse(BaseModel):
-    traffic_id: int
-    slot_id: Optional[int] = 0
-    product_name: str
-    nv_mid: str
-    short_keyword: Optional[str] = None
-    target_url: Optional[str] = None
+    traffic_id: int          # traffic_navershopping-test.id
+    slot_id: Optional[int] = 0  # slot_navertest.id
+    product_name: str        # slot_navertest.product_name
+    nv_mid: str              # slot_navertest.mid
+    short_keyword: str       # traffic.keyword (풀네임)
+    target_url: Optional[str] = None  # traffic.link_url
 
 class ClaimWorkBatchResponse(BaseModel):
     tasks: list[ClaimWorkResponse]
@@ -37,14 +37,66 @@ class ClaimWorkBatchResponse(BaseModel):
 
 class CompleteWorkRequest(BaseModel):
     traffic_id: int
+    slot_id: Optional[int] = None
     device_id: str
-    metadata: Optional[Dict[str, Any]] = None  # ackey, scroll_count, dwell_time 등
+    metadata: Optional[Dict[str, Any]] = None
 
 class FailWorkRequest(BaseModel):
     traffic_id: int
+    slot_id: Optional[int] = None
     device_id: str
     error_message: str
     metadata: Optional[Dict[str, Any]] = None
+
+# ============================================================
+# 내부 헬퍼
+# ============================================================
+
+def _claim_one(prod) -> Optional[ClaimWorkResponse]:
+    """traffic_navershopping-test에서 1건 꺼내고 DELETE. slot_navertest에서 mid/product_name 조회."""
+    # 1) 가장 오래된 1건 SELECT
+    row_result = prod.table('traffic_navershopping-test') \
+        .select('*') \
+        .order('id', desc=False) \
+        .limit(1) \
+        .execute()
+
+    if not row_result.data:
+        return None
+
+    row = row_result.data[0]
+    traffic_id = row['id']
+    slot_id = row.get('slot_id')
+    keyword = row.get('keyword', '')
+    link_url = row.get('link_url', '')
+
+    # 2) slot_navertest에서 mid, product_name 조회
+    mid = ''
+    product_name = ''
+    if slot_id:
+        slot_result = prod.table('slot_navertest') \
+            .select('mid, product_name') \
+            .eq('id', slot_id) \
+            .limit(1) \
+            .execute()
+        if slot_result.data:
+            mid = slot_result.data[0].get('mid', '')
+            product_name = slot_result.data[0].get('product_name', '')
+
+    # 3) DELETE (소비형 큐)
+    prod.table('traffic_navershopping-test') \
+        .delete() \
+        .eq('id', traffic_id) \
+        .execute()
+
+    return ClaimWorkResponse(
+        traffic_id=traffic_id,
+        slot_id=slot_id or 0,
+        product_name=product_name,
+        nv_mid=mid,
+        short_keyword=keyword,
+        target_url=link_url or None
+    )
 
 # ============================================================
 # API 엔드포인트
@@ -53,51 +105,18 @@ class FailWorkRequest(BaseModel):
 @router.post("/claim-work", response_model=ClaimWorkResponse)
 async def claim_work(request: ClaimWorkRequest):
     """
-    작업 가져오기 (독립적 작업 할당 방식)
-    
-    - status='pending'인 작업을 id 오름차순으로 1개 가져옴
-    - 작업 상태를 'claimed'로 변경
-    - claimed_by, claimed_at 업데이트
-    - task_logs에 'claim' 액션 기록
+    작업 1건 가져오기 (소비형 큐)
+    traffic_navershopping-test에서 가장 오래된 1건 SELECT → slot_navertest 조회 → DELETE
     """
     try:
-        supabase = get_supabase()
-        
-        # 1. pending 상태의 작업 1개 조회 (priority 높은 순서)
-        task_result = supabase.table('distributedTasks') \
-            .select('*') \
-            .eq('status', 'pending') \
-            .order('priority', desc=True) \
-            .order('id', desc=False) \
-            .limit(1) \
-            .execute()
+        prod = get_supabase_production()
+        result = _claim_one(prod)
 
-        if not task_result.data:
+        if result is None:
             raise HTTPException(status_code=404, detail="사용 가능한 작업이 없습니다")
 
-        task = task_result.data[0]
-        task_id = task['id']
+        return result
 
-        # 2. 작업 상태 업데이트 (assigned)
-        supabase.table('distributedTasks') \
-            .update({
-                'status': 'assigned',
-                'assignedNodeId': request.device_id,
-                'assignedAt': datetime.now().isoformat()
-            }) \
-            .eq('id', task_id) \
-            .execute()
-
-        # 3. 응답 반환
-        return ClaimWorkResponse(
-            traffic_id=task_id,
-            slot_id=task.get('productId') or 0,
-            product_name=task.get('productName') or '',
-            nv_mid=task.get('nvMid') or '',
-            short_keyword=task.get('keyword') or '',
-            target_url=task.get('productUrl') or ''
-        )
-        
     except HTTPException:
         raise
     except Exception as e:
@@ -107,65 +126,19 @@ async def claim_work(request: ClaimWorkRequest):
 @router.post("/claim-work-batch", response_model=ClaimWorkBatchResponse)
 async def claim_work_batch(request: ClaimWorkBatchRequest):
     """
-    배치 작업 가져오기
-
-    - status='pending'인 작업을 id 오름차순으로 batch_size개 가져옴
-    - 각 작업의 상태를 'claimed'로 변경 (원자적 처리)
-    - task_logs에 기록
-    - 최대 50개까지 가져올 수 있음
-
-    Returns:
-        - tasks: 할당된 작업 목록
-        - total_claimed: 실제 할당된 작업 개수
+    배치 작업 가져오기 (최대 50건)
     """
     try:
-        supabase = get_supabase()
-
-        # batch_size 제한 (최대 50)
+        prod = get_supabase_production()
         batch_size = min(request.batch_size, 50)
         claimed_tasks = []
 
-        # 배치로 작업 가져오기 (루프 방식으로 원자적 처리)
-        for i in range(batch_size):
-            # 1. pending 상태의 작업 1개 조회 (priority 높은 순서)
-            task_result = supabase.table('distributedTasks') \
-                .select('*') \
-                .eq('status', 'pending') \
-                .order('priority', desc=True) \
-                .order('id', desc=False) \
-                .limit(1) \
-                .execute()
-
-            if not task_result.data:
-                # 더 이상 작업 없음
+        for _ in range(batch_size):
+            result = _claim_one(prod)
+            if result is None:
                 break
+            claimed_tasks.append(result)
 
-            task = task_result.data[0]
-            task_id = task['id']
-
-            # 2. 작업 상태 업데이트 (assigned) - 원자적 업데이트
-            update_result = supabase.table('distributedTasks') \
-                .update({
-                    'status': 'assigned',
-                    'assignedNodeId': request.device_id,
-                    'assignedAt': datetime.now().isoformat()
-                }) \
-                .eq('id', task_id) \
-                .eq('status', 'pending') \
-                .execute()
-
-            # 3. 업데이트 성공한 경우만 리스트에 추가
-            if update_result.data:
-                claimed_tasks.append(ClaimWorkResponse(
-                    traffic_id=task_id,
-                    slot_id=task.get('productId') or 0,
-                    product_name=task.get('productName') or '',
-                    nv_mid=task.get('nvMid') or '',
-                    short_keyword=task.get('keyword') or '',
-                    target_url=task.get('productUrl') or ''
-                ))
-
-        # 5. 결과 반환
         return ClaimWorkBatchResponse(
             tasks=claimed_tasks,
             total_claimed=len(claimed_tasks)
@@ -179,27 +152,44 @@ async def claim_work_batch(request: ClaimWorkBatchRequest):
 async def complete_work(request: CompleteWorkRequest):
     """
     작업 완료 보고
-    
-    - 작업 상태를 'completed'로 변경
-    - completed_at 업데이트
-    - devices 테이블의 tasks_completed 증가
-    - task_logs에 'complete' 액션 기록
+    - slot_navertest.success_count += 1
+    - slot_rank_navertest_history에 이력 INSERT
     """
     try:
-        supabase = get_supabase()
-        
-        # 1. 작업 상태 업데이트 (completed)
-        supabase.table('distributedTasks') \
-            .update({
-                'status': 'completed',
-                'completedAt': datetime.now().isoformat(),
-                'result': str(request.metadata) if request.metadata else None
-            }) \
-            .eq('id', request.traffic_id) \
-            .execute()
-        
+        prod = get_supabase_production()
+
+        # slot_navertest success_count 증가
+        if request.slot_id:
+            slot_result = prod.table('slot_navertest') \
+                .select('success_count') \
+                .eq('id', request.slot_id) \
+                .limit(1) \
+                .execute()
+
+            current_count = 0
+            if slot_result.data:
+                current_count = slot_result.data[0].get('success_count', 0) or 0
+
+            prod.table('slot_navertest') \
+                .update({'success_count': current_count + 1}) \
+                .eq('id', request.slot_id) \
+                .execute()
+
+        # history INSERT
+        try:
+            prod.table('slot_rank_navertest_history').insert({
+                'slot_id': request.slot_id,
+                'device_id': request.device_id,
+                'traffic_id': request.traffic_id,
+                'action': 'complete',
+                'metadata': request.metadata,
+                'created_at': datetime.now().isoformat()
+            }).execute()
+        except Exception:
+            pass  # history 실패해도 성공 응답
+
         return {"status": "success", "message": "작업 완료 처리됨"}
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"작업 완료 처리 실패: {str(e)}")
 
@@ -208,26 +198,45 @@ async def complete_work(request: CompleteWorkRequest):
 async def fail_work(request: FailWorkRequest):
     """
     작업 실패 보고
-    
-    - 작업 상태를 'failed'로 변경
-    - error_message 저장
-    - devices 테이블의 tasks_failed 증가
-    - task_logs에 'fail' 액션 기록
+    - slot_navertest.fail_count += 1
+    - slot_rank_navertest_history에 이력 INSERT
     """
     try:
-        supabase = get_supabase()
-        
-        # 1. 작업 상태 업데이트 (failed)
-        supabase.table('distributedTasks') \
-            .update({
-                'status': 'failed',
-                'result': f'ERROR: {request.error_message}'
-            }) \
-            .eq('id', request.traffic_id) \
-            .execute()
-        
+        prod = get_supabase_production()
+
+        # slot_navertest fail_count 증가
+        if request.slot_id:
+            slot_result = prod.table('slot_navertest') \
+                .select('fail_count') \
+                .eq('id', request.slot_id) \
+                .limit(1) \
+                .execute()
+
+            current_count = 0
+            if slot_result.data:
+                current_count = slot_result.data[0].get('fail_count', 0) or 0
+
+            prod.table('slot_navertest') \
+                .update({'fail_count': current_count + 1}) \
+                .eq('id', request.slot_id) \
+                .execute()
+
+        # history INSERT
+        try:
+            prod.table('slot_rank_navertest_history').insert({
+                'slot_id': request.slot_id,
+                'device_id': request.device_id,
+                'traffic_id': request.traffic_id,
+                'action': 'fail',
+                'fail_reason': request.error_message,
+                'metadata': request.metadata,
+                'created_at': datetime.now().isoformat()
+            }).execute()
+        except Exception:
+            pass
+
         return {"status": "success", "message": "작업 실패 처리됨"}
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"작업 실패 처리 실패: {str(e)}")
 
@@ -240,15 +249,11 @@ async def log_action(
     message: str = Body(...),
     metadata: Optional[Dict[str, Any]] = Body(None)
 ):
-    """
-    작업 중 액션 로그 기록
-    
-    - action: search, scroll, click 등
-    - metadata: ackey, scroll_count, dwell_time 등
-    """
+    """작업 중 액션 로그 기록"""
     try:
+        from app.database.supabase_client import get_supabase
         supabase = get_supabase()
-        
+
         supabase.table('task_logs').insert({
             'traffic_id': traffic_id,
             'device_id': device_id,
@@ -256,8 +261,8 @@ async def log_action(
             'message': message,
             'metadata': metadata
         }).execute()
-        
+
         return {"status": "success", "message": "로그 기록됨"}
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"로그 기록 실패: {str(e)}")

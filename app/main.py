@@ -57,7 +57,14 @@ def health_check():
     except Exception as e:
         supabase_status = f"disconnected: {str(e)}"
 
+    try:
+        from app.database.supabase_client import test_production_connection
+        supabase_prod_status = "connected" if test_production_connection() else "disconnected"
+    except Exception as e:
+        supabase_prod_status = f"disconnected: {str(e)}"
+
     return {
         "status": "healthy",
-        "supabase": supabase_status
+        "supabase_control": supabase_status,
+        "supabase_production": supabase_prod_status
     }

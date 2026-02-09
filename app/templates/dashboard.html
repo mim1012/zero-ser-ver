@@ -117,6 +117,7 @@
         .c-green { color: var(--badge-completed); }
         .c-red { color: var(--badge-failed); }
         .c-yellow { color: var(--badge-pending); }
+        .c-blue { color: var(--badge-assigned); }
 
         /* Tables */
         .panel {
@@ -355,6 +356,16 @@
         /* Log entries */
         .log-row td { font-size: 12px; }
         .log-row .log-meta { color: var(--text-muted); }
+
+        /* Section title */
+        .section-title {
+            font-size: 15px;
+            font-weight: 600;
+            margin: 24px 0 12px 0;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .section-title:first-child { margin-top: 0; }
     </style>
 </head>
 <body>
@@ -380,11 +391,15 @@
 <div id="tab-overview" class="tab-content active">
     <div class="stats-row">
         <div class="stat-card">
-            <div class="label">Total Tasks</div>
-            <div class="value c-teal" id="ov-total">-</div>
+            <div class="label">Queue (Pending)</div>
+            <div class="value c-yellow" id="ov-queue">-</div>
         </div>
         <div class="stat-card">
-            <div class="label">Completed</div>
+            <div class="label">Total Slots</div>
+            <div class="value c-teal" id="ov-slots">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Success</div>
             <div class="value c-green" id="ov-completed">-</div>
         </div>
         <div class="stat-card">
@@ -393,15 +408,11 @@
         </div>
         <div class="stat-card">
             <div class="label">Success Rate</div>
-            <div class="value c-yellow" id="ov-rate">-</div>
+            <div class="value c-blue" id="ov-rate">-</div>
         </div>
         <div class="stat-card">
-            <div class="label">Total Devices</div>
+            <div class="label">Devices</div>
             <div class="value c-teal" id="ov-devices">-</div>
-        </div>
-        <div class="stat-card">
-            <div class="label">Active Devices</div>
-            <div class="value c-green" id="ov-active">-</div>
         </div>
     </div>
 
@@ -419,55 +430,75 @@
     </div>
 </div>
 
-<!-- ==================== TAB: TASKS ==================== -->
+<!-- ==================== TAB: TASKS (Slots + Queue) ==================== -->
 <div id="tab-tasks" class="tab-content">
-    <!-- Toolbar -->
+
+    <!-- ===== Section 1: Slots ===== -->
+    <div class="section-title">Slots (slot_navertest)</div>
     <div class="toolbar">
-        <button class="btn btn-primary" onclick="openCreateModal()">+ New Task</button>
-        <button class="btn" onclick="openBatchModal()">Batch Import</button>
+        <button class="btn btn-primary" onclick="openCreateSlotModal()">+ New Slot</button>
         <div class="sep"></div>
-        <button class="btn" onclick="bulkAction('reset_failed')">Reset Failed</button>
-        <button class="btn" onclick="bulkAction('delete_completed')">Clear Completed</button>
-        <button class="btn" onclick="bulkAction('pause_all')">Pause All</button>
-        <button class="btn" onclick="bulkAction('resume_all')">Resume All</button>
+        <button class="btn" onclick="slotBulkAction('reset_counts')">Reset All Counts</button>
+        <button class="btn" onclick="slotBulkAction('unlock_all')">Unlock All</button>
+        <button class="btn btn-danger btn-sm" onclick="slotBulkAction('delete_selected')">Delete Selected</button>
         <div class="sep"></div>
-        <button class="btn btn-danger btn-sm" onclick="bulkAction('delete_selected')">Delete Selected</button>
-        <button class="btn btn-sm" onclick="bulkAction('reset_selected')">Reset Selected</button>
-        <div class="sep"></div>
-        <select id="filterStatus" onchange="taskPage=1;loadTasks()">
+        <select id="slotFilterStatus" onchange="slotPage=1;loadSlots()">
             <option value="">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="assigned">Assigned</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
+            <option value="active">Active</option>
             <option value="paused">Paused</option>
         </select>
-        <input type="text" id="filterSearch" placeholder="Search keyword..." onkeydown="if(event.key==='Enter'){taskPage=1;loadTasks();}">
+        <input type="text" id="slotFilterSearch" placeholder="Search keyword/MID..." onkeydown="if(event.key==='Enter'){slotPage=1;loadSlots();}">
     </div>
 
-    <!-- Tasks table -->
     <div class="panel">
         <table>
             <thead><tr>
-                <th class="checkbox-cell"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
+                <th class="checkbox-cell"><input type="checkbox" id="slotSelectAll" onchange="toggleSlotSelectAll(this)"></th>
                 <th>ID</th>
-                <th>Product</th>
-                <th>MID</th>
                 <th>Keyword</th>
-                <th>Priority</th>
+                <th>MID</th>
+                <th>Product</th>
+                <th>Success</th>
+                <th>Fail</th>
                 <th>Status</th>
-                <th>Assigned</th>
-                <th>Created</th>
                 <th>Actions</th>
             </tr></thead>
-            <tbody id="tasks-body">
-                <tr><td colspan="10" class="empty-state">Select the Tasks tab to load data</td></tr>
+            <tbody id="slots-body">
+                <tr><td colspan="9" class="empty-state">Loading...</td></tr>
             </tbody>
         </table>
         <div class="pagination">
-            <button class="btn btn-sm" onclick="taskPage=Math.max(1,taskPage-1);loadTasks();">&lt; Prev</button>
-            <span id="pageInfo">1 / 1</span>
-            <button class="btn btn-sm" onclick="taskPage=Math.min(taskTotalPages,taskPage+1);loadTasks();">Next &gt;</button>
+            <button class="btn btn-sm" onclick="slotPage=Math.max(1,slotPage-1);loadSlots();">&lt; Prev</button>
+            <span id="slotPageInfo">1 / 1</span>
+            <button class="btn btn-sm" onclick="slotPage=Math.min(slotTotalPages,slotPage+1);loadSlots();">Next &gt;</button>
+        </div>
+    </div>
+
+    <!-- ===== Section 2: Queue ===== -->
+    <div class="section-title">Queue (traffic_navershopping-test)</div>
+    <div class="toolbar">
+        <button class="btn btn-primary" onclick="openEnqueueModal()">+ Enqueue</button>
+        <button class="btn btn-danger" onclick="clearQueue()">Clear All Queue</button>
+        <div class="sep"></div>
+        <span style="font-size:13px;color:var(--text-muted)">Pending: <strong id="queueCount" style="color:var(--text-primary)">-</strong></span>
+    </div>
+
+    <div class="panel">
+        <table>
+            <thead><tr>
+                <th>ID</th>
+                <th>Slot ID</th>
+                <th>Keyword</th>
+                <th>Link URL</th>
+            </tr></thead>
+            <tbody id="queue-body">
+                <tr><td colspan="4" class="empty-state">Loading...</td></tr>
+            </tbody>
+        </table>
+        <div class="pagination">
+            <button class="btn btn-sm" onclick="queuePage=Math.max(1,queuePage-1);loadQueue();">&lt; Prev</button>
+            <span id="queuePageInfo">1 / 1</span>
+            <button class="btn btn-sm" onclick="queuePage=Math.min(queueTotalPages,queuePage+1);loadQueue();">Next &gt;</button>
         </div>
     </div>
 </div>
@@ -516,107 +547,111 @@
 
 <!-- ==================== MODALS ==================== -->
 
-<!-- Create Task Modal -->
-<dialog id="createModal">
+<!-- Create Slot Modal -->
+<dialog id="createSlotModal">
     <div class="modal-header">
-        <span>New Task</span>
-        <button class="btn btn-sm" onclick="closeModal('createModal')">&times;</button>
+        <span>New Slot</span>
+        <button class="btn btn-sm" onclick="closeModal('createSlotModal')">&times;</button>
     </div>
     <div class="modal-body">
         <div class="form-group">
-            <label>Product Name</label>
-            <input type="text" id="c-productName">
-        </div>
-        <div class="form-group">
-            <label>NV MID</label>
-            <input type="text" id="c-nvMid">
-        </div>
-        <div class="form-group">
             <label>Keyword</label>
-            <input type="text" id="c-keyword">
+            <input type="text" id="cs-keyword">
         </div>
         <div class="form-group">
-            <label>Product URL (optional)</label>
-            <input type="text" id="c-productUrl">
+            <label>MID</label>
+            <input type="text" id="cs-mid">
+        </div>
+        <div class="form-group">
+            <label>Product Name</label>
+            <input type="text" id="cs-productName">
         </div>
         <div style="display:flex;gap:14px;">
             <div class="form-group" style="flex:1">
-                <label>Priority</label>
-                <input type="number" id="c-priority" value="1" min="0">
-            </div>
-            <div class="form-group" style="flex:1">
-                <label>Repeat Count</label>
-                <input type="number" id="c-repeat" value="1" min="1" max="100">
-            </div>
-        </div>
-    </div>
-    <div class="modal-footer">
-        <button class="btn" onclick="closeModal('createModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitCreate()">Create</button>
-    </div>
-</dialog>
-
-<!-- Batch Import Modal -->
-<dialog id="batchModal">
-    <div class="modal-header">
-        <span>Batch Import (TSV)</span>
-        <button class="btn btn-sm" onclick="closeModal('batchModal')">&times;</button>
-    </div>
-    <div class="modal-body">
-        <div class="form-group">
-            <label>Paste TSV: ProductName &#9; MID &#9; Keyword &#9; URL(opt)</label>
-            <textarea id="b-tsv" placeholder="Product A&#9;12345&#9;keyword1&#10;Product B&#9;67890&#9;keyword2&#9;https://..."></textarea>
-        </div>
-    </div>
-    <div class="modal-footer">
-        <button class="btn" onclick="closeModal('batchModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitBatch()">Import</button>
-    </div>
-</dialog>
-
-<!-- Edit Task Modal -->
-<dialog id="editModal">
-    <div class="modal-header">
-        <span>Edit Task <span id="e-id"></span></span>
-        <button class="btn btn-sm" onclick="closeModal('editModal')">&times;</button>
-    </div>
-    <div class="modal-body">
-        <div class="form-group">
-            <label>Product Name</label>
-            <input type="text" id="e-productName">
-        </div>
-        <div class="form-group">
-            <label>NV MID</label>
-            <input type="text" id="e-nvMid">
-        </div>
-        <div class="form-group">
-            <label>Keyword</label>
-            <input type="text" id="e-keyword">
-        </div>
-        <div class="form-group">
-            <label>Product URL</label>
-            <input type="text" id="e-productUrl">
-        </div>
-        <div style="display:flex;gap:14px;">
-            <div class="form-group" style="flex:1">
-                <label>Priority</label>
-                <input type="number" id="e-priority" min="0">
+                <label>Daily Target</label>
+                <input type="number" id="cs-dailyTarget" value="100" min="1">
             </div>
             <div class="form-group" style="flex:1">
                 <label>Status</label>
-                <select id="e-status">
-                    <option value="pending">pending</option>
-                    <option value="assigned">assigned</option>
-                    <option value="completed">completed</option>
-                    <option value="failed">failed</option>
+                <select id="cs-status">
+                    <option value="active">active</option>
                     <option value="paused">paused</option>
                 </select>
             </div>
         </div>
     </div>
     <div class="modal-footer">
-        <button class="btn" onclick="closeModal('editModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitEdit()">Save</button>
+        <button class="btn" onclick="closeModal('createSlotModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitCreateSlot()">Create</button>
+    </div>
+</dialog>
+
+<!-- Edit Slot Modal -->
+<dialog id="editSlotModal">
+    <div class="modal-header">
+        <span>Edit Slot <span id="es-id"></span></span>
+        <button class="btn btn-sm" onclick="closeModal('editSlotModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+        <div class="form-group">
+            <label>Keyword</label>
+            <input type="text" id="es-keyword">
+        </div>
+        <div class="form-group">
+            <label>MID</label>
+            <input type="text" id="es-mid">
+        </div>
+        <div class="form-group">
+            <label>Product Name</label>
+            <input type="text" id="es-productName">
+        </div>
+        <div style="display:flex;gap:14px;">
+            <div class="form-group" style="flex:1">
+                <label>Daily Target</label>
+                <input type="number" id="es-dailyTarget" min="1">
+            </div>
+            <div class="form-group" style="flex:1">
+                <label>Status</label>
+                <select id="es-status">
+                    <option value="active">active</option>
+                    <option value="paused">paused</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button class="btn" onclick="closeModal('editSlotModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitEditSlot()">Save</button>
+    </div>
+</dialog>
+
+<!-- Enqueue Modal -->
+<dialog id="enqueueModal">
+    <div class="modal-header">
+        <span>Enqueue Tasks</span>
+        <button class="btn btn-sm" onclick="closeModal('enqueueModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+        <div class="form-group">
+            <label>Slot ID</label>
+            <input type="number" id="eq-slotId">
+        </div>
+        <div class="form-group">
+            <label>Keyword</label>
+            <input type="text" id="eq-keyword">
+        </div>
+        <div class="form-group">
+            <label>Link URL (optional)</label>
+            <input type="text" id="eq-linkUrl">
+        </div>
+        <div class="form-group">
+            <label>Repeat Count</label>
+            <input type="number" id="eq-repeat" value="10" min="1" max="500">
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button class="btn" onclick="closeModal('enqueueModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitEnqueue()">Enqueue</button>
     </div>
 </dialog>
 
@@ -630,12 +665,14 @@ const API = window.location.origin + '/zero/api/v1';
 // State
 // ============================================================
 let currentTab = 'overview';
-let taskPage = 1;
-let taskTotalPages = 1;
-let selectedIds = new Set();
-let editingId = null;
+let slotPage = 1;
+let slotTotalPages = 1;
+let queuePage = 1;
+let queueTotalPages = 1;
+let selectedSlotIds = new Set();
+let editingSlotId = null;
+let cachedSlots = [];
 let autoRefreshTimer = null;
-let cachedTasks = [];
 
 // ============================================================
 // Tab switching
@@ -650,7 +687,7 @@ function switchTab(name) {
 
 function refreshCurrentTab() {
     if (currentTab === 'overview') loadOverview();
-    else if (currentTab === 'tasks') loadTasks();
+    else if (currentTab === 'tasks') { loadSlots(); loadQueue(); }
     else if (currentTab === 'devices') loadDevices();
     else if (currentTab === 'logs') loadLogs();
     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ko-KR');
@@ -673,13 +710,12 @@ async function loadOverview() {
         const stats = await statsRes.json();
         const groups = await groupsRes.json();
 
-        document.getElementById('ov-total').textContent = stats.tasks.total.toLocaleString();
-        document.getElementById('ov-completed').textContent = stats.tasks.completed.toLocaleString();
-        document.getElementById('ov-failed').textContent = stats.tasks.failed.toLocaleString();
-        const rate = stats.tasks.total > 0 ? (stats.tasks.completed / stats.tasks.total * 100).toFixed(1) : '0';
-        document.getElementById('ov-rate').textContent = rate + '%';
-        document.getElementById('ov-devices').textContent = stats.devices.total;
-        document.getElementById('ov-active').textContent = stats.devices.active;
+        document.getElementById('ov-queue').textContent = (stats.tasks.queue || 0).toLocaleString();
+        document.getElementById('ov-slots').textContent = (stats.tasks.total_slots || 0).toLocaleString();
+        document.getElementById('ov-completed').textContent = (stats.tasks.completed || 0).toLocaleString();
+        document.getElementById('ov-failed').textContent = (stats.tasks.failed || 0).toLocaleString();
+        document.getElementById('ov-rate').textContent = (stats.tasks.success_rate || 0) + '%';
+        document.getElementById('ov-devices').textContent = `${stats.devices.active} / ${stats.devices.total}`;
 
         const gb = document.getElementById('ov-groups-body');
         if (!groups.groups || groups.groups.length === 0) {
@@ -700,99 +736,95 @@ async function loadOverview() {
 }
 
 // ============================================================
-// Tasks
+// Slots
 // ============================================================
-async function loadTasks() {
+async function loadSlots() {
     try {
-        const status = document.getElementById('filterStatus').value;
-        const search = document.getElementById('filterSearch').value;
-        const params = new URLSearchParams({ page: taskPage, limit: 50 });
+        const status = document.getElementById('slotFilterStatus').value;
+        const search = document.getElementById('slotFilterSearch').value;
+        const params = new URLSearchParams({ page: slotPage, limit: 50 });
         if (status) params.set('status', status);
         if (search) params.set('search', search);
 
-        const res = await fetch(`${API}/admin/tasks?${params}`);
+        const res = await fetch(`${API}/admin/slots?${params}`);
         const data = await res.json();
-        taskTotalPages = data.total_pages;
-        cachedTasks = data.tasks || [];
-        document.getElementById('pageInfo').textContent = `${data.page} / ${data.total_pages} (${data.total})`;
+        slotTotalPages = data.total_pages;
+        cachedSlots = data.slots || [];
+        document.getElementById('slotPageInfo').textContent = `${data.page} / ${data.total_pages} (${data.total})`;
 
-        selectedIds.clear();
-        document.getElementById('selectAll').checked = false;
+        selectedSlotIds.clear();
+        document.getElementById('slotSelectAll').checked = false;
 
-        const tbody = document.getElementById('tasks-body');
-        if (!data.tasks || data.tasks.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No tasks found</td></tr>';
+        const tbody = document.getElementById('slots-body');
+        if (!data.slots || data.slots.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No slots found</td></tr>';
             return;
         }
 
-        tbody.innerHTML = data.tasks.map(t => `<tr>
-            <td class="checkbox-cell"><input type="checkbox" value="${t.id}" onchange="toggleSelect(${t.id}, this.checked)"></td>
-            <td>${t.id}</td>
-            <td title="${esc(t.productName || '')}">${esc(t.productName || '-')}</td>
-            <td>${esc(t.nvMid || '-')}</td>
-            <td>${esc(t.keyword || '-')}</td>
-            <td>${t.priority ?? 1}</td>
-            <td><span class="badge badge-${t.status || 'pending'}">${t.status || 'pending'}</span></td>
-            <td>${esc(t.assignedNodeId || '-')}</td>
-            <td>${t.created_at ? new Date(t.created_at).toLocaleDateString('ko-KR') : '-'}</td>
+        tbody.innerHTML = data.slots.map(s => `<tr>
+            <td class="checkbox-cell"><input type="checkbox" value="${s.id}" onchange="toggleSlotSelect(${s.id}, this.checked)"></td>
+            <td>${s.id}</td>
+            <td title="${esc(s.keyword || '')}">${esc(s.keyword || '-')}</td>
+            <td>${esc(s.mid || '-')}</td>
+            <td title="${esc(s.product_name || '')}">${esc(s.product_name || '-')}</td>
+            <td class="c-green">${s.success_count || 0}</td>
+            <td class="c-red">${s.fail_count || 0}</td>
+            <td><span class="badge badge-${s.status === 'active' ? 'active' : 'paused'}">${s.status || 'active'}</span></td>
             <td class="actions-cell">
-                <button class="btn btn-sm" onclick="openEditModal(${t.id})">Edit</button>
-                <button class="btn btn-sm btn-danger" onclick="deleteTask(${t.id})">Del</button>
+                <button class="btn btn-sm" onclick="openEditSlotModal(${s.id})">Edit</button>
+                <button class="btn btn-sm btn-primary" onclick="enqueueFromSlot(${s.id}, '${esc(s.keyword || '')}')">+Q</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteSlot(${s.id})">Del</button>
             </td>
         </tr>`).join('');
     } catch (e) {
-        console.error('Tasks load error:', e);
+        console.error('Slots load error:', e);
     }
 }
 
-function toggleSelect(id, checked) {
-    if (checked) selectedIds.add(id); else selectedIds.delete(id);
+function toggleSlotSelect(id, checked) {
+    if (checked) selectedSlotIds.add(id); else selectedSlotIds.delete(id);
 }
 
-function toggleSelectAll(el) {
-    document.querySelectorAll('#tasks-body input[type="checkbox"]').forEach(cb => {
+function toggleSlotSelectAll(el) {
+    document.querySelectorAll('#slots-body input[type="checkbox"]').forEach(cb => {
         cb.checked = el.checked;
-        toggleSelect(parseInt(cb.value), el.checked);
+        toggleSlotSelect(parseInt(cb.value), el.checked);
     });
 }
 
-// ============================================================
-// Task CRUD
-// ============================================================
-function openCreateModal() {
-    document.getElementById('c-productName').value = '';
-    document.getElementById('c-nvMid').value = '';
-    document.getElementById('c-keyword').value = '';
-    document.getElementById('c-productUrl').value = '';
-    document.getElementById('c-priority').value = '1';
-    document.getElementById('c-repeat').value = '1';
-    document.getElementById('createModal').showModal();
+// Slot CRUD
+function openCreateSlotModal() {
+    document.getElementById('cs-keyword').value = '';
+    document.getElementById('cs-mid').value = '';
+    document.getElementById('cs-productName').value = '';
+    document.getElementById('cs-dailyTarget').value = '100';
+    document.getElementById('cs-status').value = 'active';
+    document.getElementById('createSlotModal').showModal();
 }
 
-async function submitCreate() {
+async function submitCreateSlot() {
     const body = {
-        productName: document.getElementById('c-productName').value,
-        nvMid: document.getElementById('c-nvMid').value,
-        keyword: document.getElementById('c-keyword').value,
-        productUrl: document.getElementById('c-productUrl').value || null,
-        priority: parseInt(document.getElementById('c-priority').value) || 1,
-        repeat_count: parseInt(document.getElementById('c-repeat').value) || 1,
+        keyword: document.getElementById('cs-keyword').value,
+        mid: document.getElementById('cs-mid').value,
+        product_name: document.getElementById('cs-productName').value,
+        daily_target: parseInt(document.getElementById('cs-dailyTarget').value) || 100,
+        status: document.getElementById('cs-status').value,
     };
-    if (!body.productName || !body.nvMid || !body.keyword) {
-        toast('Product Name, MID, Keyword are required', 'error');
+    if (!body.keyword || !body.mid || !body.product_name) {
+        toast('Keyword, MID, Product Name are required', 'error');
         return;
     }
     try {
-        const res = await fetch(`${API}/admin/tasks`, {
+        const res = await fetch(`${API}/admin/slots`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
         const data = await res.json();
         if (res.ok) {
-            toast(`Created ${data.created} task(s)`, 'success');
-            closeModal('createModal');
-            loadTasks();
+            toast('Slot created', 'success');
+            closeModal('createSlotModal');
+            loadSlots();
         } else {
             toast(data.detail || 'Create failed', 'error');
         }
@@ -801,70 +833,39 @@ async function submitCreate() {
     }
 }
 
-function openBatchModal() {
-    document.getElementById('b-tsv').value = '';
-    document.getElementById('batchModal').showModal();
+function openEditSlotModal(id) {
+    editingSlotId = id;
+    const slot = cachedSlots.find(s => s.id === id);
+    if (!slot) { toast('Slot not found in current page', 'error'); return; }
+
+    document.getElementById('es-id').textContent = '#' + id;
+    document.getElementById('es-keyword').value = slot.keyword || '';
+    document.getElementById('es-mid').value = slot.mid || '';
+    document.getElementById('es-productName').value = slot.product_name || '';
+    document.getElementById('es-dailyTarget').value = slot.daily_target || 100;
+    document.getElementById('es-status').value = slot.status || 'active';
+    document.getElementById('editSlotModal').showModal();
 }
 
-async function submitBatch() {
-    const tsv = document.getElementById('b-tsv').value;
-    if (!tsv.trim()) { toast('Paste TSV data', 'error'); return; }
-    try {
-        const res = await fetch(`${API}/admin/tasks/batch`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tsv })
-        });
-        const data = await res.json();
-        if (res.ok) {
-            let msg = `Created ${data.created} task(s)`;
-            if (data.errors && data.errors.length) msg += ` (${data.errors.length} errors)`;
-            toast(msg, 'success');
-            closeModal('batchModal');
-            loadTasks();
-        } else {
-            toast(data.detail || 'Batch failed', 'error');
-        }
-    } catch (e) {
-        toast('Network error', 'error');
-    }
-}
-
-function openEditModal(id) {
-    editingId = id;
-    const task = cachedTasks.find(t => t.id === id);
-    if (!task) { toast('Task not found in current page', 'error'); return; }
-
-    document.getElementById('e-id').textContent = '#' + id;
-    document.getElementById('e-productName').value = task.productName || '';
-    document.getElementById('e-nvMid').value = task.nvMid || '';
-    document.getElementById('e-keyword').value = task.keyword || '';
-    document.getElementById('e-productUrl').value = task.productUrl || '';
-    document.getElementById('e-priority').value = task.priority ?? 1;
-    document.getElementById('e-status').value = task.status || 'pending';
-    document.getElementById('editModal').showModal();
-}
-
-async function submitEdit() {
+async function submitEditSlot() {
     const body = {
-        productName: document.getElementById('e-productName').value || null,
-        nvMid: document.getElementById('e-nvMid').value || null,
-        keyword: document.getElementById('e-keyword').value || null,
-        productUrl: document.getElementById('e-productUrl').value || null,
-        priority: parseInt(document.getElementById('e-priority').value) || null,
-        status: document.getElementById('e-status').value || null,
+        keyword: document.getElementById('es-keyword').value || null,
+        mid: document.getElementById('es-mid').value || null,
+        product_name: document.getElementById('es-productName').value || null,
+        daily_target: parseInt(document.getElementById('es-dailyTarget').value) || null,
+        status: document.getElementById('es-status').value || null,
     };
     try {
-        const res = await fetch(`${API}/admin/tasks/${editingId}`, {
+        const res = await fetch(`${API}/admin/slots/${editingSlotId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
         const data = await res.json();
         if (res.ok) {
-            toast('Task updated', 'success');
-            closeModal('editModal');
-            loadTasks();
+            toast('Slot updated', 'success');
+            closeModal('editSlotModal');
+            loadSlots();
         } else {
             toast(data.detail || 'Update failed', 'error');
         }
@@ -873,48 +874,135 @@ async function submitEdit() {
     }
 }
 
-async function deleteTask(id) {
-    if (!confirm(`Delete task #${id}?`)) return;
+async function deleteSlot(id) {
+    if (!confirm(`Delete slot #${id}?`)) return;
     try {
-        const res = await fetch(`${API}/admin/tasks/${id}`, { method: 'DELETE' });
-        if (res.ok) { toast('Task deleted', 'success'); loadTasks(); }
+        const res = await fetch(`${API}/admin/slots/${id}`, { method: 'DELETE' });
+        if (res.ok) { toast('Slot deleted', 'success'); loadSlots(); }
         else { const d = await res.json(); toast(d.detail || 'Delete failed', 'error'); }
     } catch (e) {
         toast('Network error', 'error');
     }
 }
 
-async function bulkAction(action) {
-    const needsSelection = ['delete_selected', 'reset_selected'];
-    let ids = null;
-    if (needsSelection.includes(action)) {
-        ids = Array.from(selectedIds);
-        if (ids.length === 0) { toast('Select tasks first', 'error'); return; }
+async function slotBulkAction(action) {
+    if (action === 'delete_selected') {
+        const ids = Array.from(selectedSlotIds);
+        if (ids.length === 0) { toast('Select slots first', 'error'); return; }
+        if (!confirm(`Delete ${ids.length} selected slots?`)) return;
+        try {
+            const res = await fetch(`${API}/admin/slots/bulk-action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, slot_ids: ids })
+            });
+            const data = await res.json();
+            if (res.ok) { toast(`Deleted ${data.affected} slots`, 'success'); loadSlots(); }
+            else { toast(data.detail || 'Failed', 'error'); }
+        } catch (e) { toast('Network error', 'error'); }
+        return;
     }
 
     const labels = {
-        reset_failed: 'Reset all failed tasks?',
-        delete_completed: 'Delete all completed tasks?',
-        pause_all: 'Pause all pending tasks?',
-        resume_all: 'Resume all paused tasks?',
-        delete_selected: `Delete ${selectedIds.size} selected tasks?`,
-        reset_selected: `Reset ${selectedIds.size} selected tasks?`,
+        reset_counts: 'Reset all success/fail counts to 0?',
+        unlock_all: 'Unlock all worker locks?',
     };
     if (!confirm(labels[action] || `Execute ${action}?`)) return;
 
     try {
-        const res = await fetch(`${API}/admin/tasks/bulk-action`, {
+        const res = await fetch(`${API}/admin/slots/bulk-action`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action, task_ids: ids })
+            body: JSON.stringify({ action })
+        });
+        const data = await res.json();
+        if (res.ok) { toast(`${action}: ${data.affected} affected`, 'success'); loadSlots(); }
+        else { toast(data.detail || 'Failed', 'error'); }
+    } catch (e) { toast('Network error', 'error'); }
+}
+
+// ============================================================
+// Queue
+// ============================================================
+async function loadQueue() {
+    try {
+        const params = new URLSearchParams({ page: queuePage, limit: 50 });
+        const res = await fetch(`${API}/admin/queue?${params}`);
+        const data = await res.json();
+        queueTotalPages = data.total_pages;
+        document.getElementById('queueCount').textContent = (data.total || 0).toLocaleString();
+        document.getElementById('queuePageInfo').textContent = `${data.page} / ${data.total_pages} (${data.total})`;
+
+        const tbody = document.getElementById('queue-body');
+        if (!data.queue || data.queue.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Queue is empty</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.queue.map(q => `<tr>
+            <td>${q.id}</td>
+            <td>${q.slot_id || '-'}</td>
+            <td>${esc(q.keyword || '-')}</td>
+            <td title="${esc(q.link_url || '')}">${esc(q.link_url || '-')}</td>
+        </tr>`).join('');
+    } catch (e) {
+        console.error('Queue load error:', e);
+    }
+}
+
+function openEnqueueModal() {
+    document.getElementById('eq-slotId').value = '';
+    document.getElementById('eq-keyword').value = '';
+    document.getElementById('eq-linkUrl').value = '';
+    document.getElementById('eq-repeat').value = '10';
+    document.getElementById('enqueueModal').showModal();
+}
+
+function enqueueFromSlot(slotId, keyword) {
+    document.getElementById('eq-slotId').value = slotId;
+    document.getElementById('eq-keyword').value = keyword;
+    document.getElementById('eq-linkUrl').value = '';
+    document.getElementById('eq-repeat').value = '10';
+    document.getElementById('enqueueModal').showModal();
+}
+
+async function submitEnqueue() {
+    const body = {
+        slot_id: parseInt(document.getElementById('eq-slotId').value),
+        keyword: document.getElementById('eq-keyword').value,
+        link_url: document.getElementById('eq-linkUrl').value || null,
+        repeat_count: parseInt(document.getElementById('eq-repeat').value) || 10,
+    };
+    if (!body.slot_id || !body.keyword) {
+        toast('Slot ID and Keyword are required', 'error');
+        return;
+    }
+    try {
+        const res = await fetch(`${API}/admin/queue`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
         });
         const data = await res.json();
         if (res.ok) {
-            toast(`${action}: ${data.affected} affected`, 'success');
-            loadTasks();
+            toast(`Enqueued ${data.created} tasks`, 'success');
+            closeModal('enqueueModal');
+            loadQueue();
         } else {
-            toast(data.detail || 'Action failed', 'error');
+            toast(data.detail || 'Enqueue failed', 'error');
         }
+    } catch (e) {
+        toast('Network error', 'error');
+    }
+}
+
+async function clearQueue() {
+    if (!confirm('Clear ALL queue items? This cannot be undone.')) return;
+    try {
+        const res = await fetch(`${API}/admin/queue/clear`, { method: 'DELETE' });
+        const data = await res.json();
+        if (res.ok) { toast(`Cleared ${data.deleted} items`, 'success'); loadQueue(); }
+        else { toast(data.detail || 'Clear failed', 'error'); }
     } catch (e) {
         toast('Network error', 'error');
     }
@@ -1003,7 +1091,6 @@ async function loadLogs() {
 // ============================================================
 // Utils
 // ============================================================
-function openModal(id) { document.getElementById(id).showModal(); }
 function closeModal(id) { document.getElementById(id).close(); }
 
 function esc(str) {
