@@ -46,8 +46,8 @@ async def get_logs(
             "limit": limit
         }
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"로그 조회 실패: {str(e)}")
+    except Exception:
+        return {"logs": [], "count": 0, "offset": offset, "limit": limit}
 
 
 @router.get("/stats/overview")
