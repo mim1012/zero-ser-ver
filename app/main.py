@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from app.api.v1 import traffic, headers, devices_supabase, dashboard, config, automation, admin
+from app.api.v1 import traffic, headers, devices_supabase, dashboard, config, automation, admin, scenario
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +29,7 @@ app.include_router(dashboard.router, prefix="/zero/api/v1/dashboard", tags=["Das
 app.include_router(config.router, prefix="/zero/api/v1", tags=["config"])
 app.include_router(automation.router, prefix="/zero/api/v1", tags=["automation"])
 app.include_router(admin.router, prefix="/zero/api/v1/admin", tags=["admin"])
+app.include_router(scenario.router, prefix="/zero/api/v1", tags=["scenario"])
 
 
 @app.get("/dashboard", response_class=HTMLResponse)

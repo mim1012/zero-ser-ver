@@ -63,10 +63,10 @@ def _generate_slug(length: int = 6) -> str:
     return ''.join(random.choices(chars, k=length))
 
 
-def _build_shopping_search_url(keyword: str) -> str:
-    """키워드 기반 네이버 통합검색 URL 생성 (모바일)"""
-    from urllib.parse import quote
-    return f"https://m.search.naver.com/search.naver?query={quote(keyword)}"
+def _build_landing_target_url() -> str:
+    """랜딩페이지 리다이렉트 대상 — 네이버 모바일 홈
+    APK 시나리오가 홈에서 자동완성을 통해 ackey/sm을 자연 생성함"""
+    return "https://m.naver.com/"
 
 
 def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: str, link_url: str) -> Optional[str]:
@@ -74,8 +74,8 @@ def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: 
     if not keyword:
         return None
 
-    # 네이버 쇼핑 검색 URL로 리다이렉트 (직접 상품페이지가 아닌 검색결과)
-    shopping_url = _build_shopping_search_url(keyword)
+    # 네이버 모바일 홈으로 리다이렉트 (APK가 자동완성 → ackey 생성)
+    target_url = _build_landing_target_url()
 
     try:
         # 기존 slug 조회 (같은 keyword 조합)
@@ -104,7 +104,7 @@ def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: 
         prod.table('landing_redirects').insert({
             'slug': slug,
             'keyword': keyword,
-            'target_url': shopping_url,
+            'target_url': target_url,
             'product_name': product_name or '',
             'redirect_count': 0,
             'active': True,
@@ -114,7 +114,7 @@ def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: 
 
     except Exception:
         # 랜딩 생성 실패 시 쇼핑 검색 URL 직접 반환
-        return shopping_url
+        return target_url
 
 
 def _claim_one(prod) -> Optional[ClaimWorkResponse]:
