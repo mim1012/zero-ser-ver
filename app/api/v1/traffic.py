@@ -63,10 +63,11 @@ def _generate_slug(length: int = 6) -> str:
     return ''.join(random.choices(chars, k=length))
 
 
-def _build_landing_target_url() -> str:
-    """랜딩페이지 리다이렉트 대상 — 네이버 모바일 홈
-    APK 시나리오가 홈에서 자동완성을 통해 ackey/sm을 자연 생성함"""
-    return "https://m.naver.com/"
+def _build_landing_target_url(keyword: str) -> str:
+    """랜딩페이지 리다이렉트 대상 — 네이버 모바일 검색 (unified-runner 참조)
+    sm=mtp_hty.top: 모바일 검색 타이핑, where=m: 모바일 통합검색"""
+    from urllib.parse import quote
+    return f"https://m.search.naver.com/search.naver?query={quote(keyword)}&sm=mtp_hty.top&where=m"
 
 
 def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: str, link_url: str) -> Optional[str]:
@@ -75,7 +76,7 @@ def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: 
         return None
 
     # 네이버 모바일 홈으로 리다이렉트 (APK가 자동완성 → ackey 생성)
-    target_url = _build_landing_target_url()
+    target_url = _build_landing_target_url(keyword)
 
     try:
         # 기존 slug 조회 (같은 keyword 조합)
