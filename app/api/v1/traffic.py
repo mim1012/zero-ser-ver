@@ -63,17 +63,25 @@ def _generate_slug(length: int = 6) -> str:
     return ''.join(random.choices(chars, k=length))
 
 
+def _build_shopping_search_url(keyword: str) -> str:
+    """키워드 기반 네이버 쇼핑 검색 URL 생성"""
+    from urllib.parse import quote
+    return f"https://msearch.shopping.naver.com/search/all?query={quote(keyword)}"
+
+
 def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: str, link_url: str) -> Optional[str]:
     """landing_redirects에서 slug 조회, 없으면 생성. 랜딩 URL 반환."""
-    if not link_url:
+    if not keyword:
         return None
 
+    # 네이버 쇼핑 검색 URL로 리다이렉트 (직접 상품페이지가 아닌 검색결과)
+    shopping_url = _build_shopping_search_url(keyword)
+
     try:
-        # 기존 slug 조회 (같은 slot_id + keyword 조합)
+        # 기존 slug 조회 (같은 keyword 조합)
         existing = prod.table('landing_redirects') \
             .select('slug') \
             .eq('keyword', keyword) \
-            .eq('target_url', link_url) \
             .eq('active', True) \
             .limit(1) \
             .execute()
@@ -96,7 +104,7 @@ def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: 
         prod.table('landing_redirects').insert({
             'slug': slug,
             'keyword': keyword,
-            'target_url': link_url,
+            'target_url': shopping_url,
             'product_name': product_name or '',
             'redirect_count': 0,
             'active': True,
@@ -105,8 +113,8 @@ def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: 
         return f"https://{LANDING_DOMAIN}/r/{slug}"
 
     except Exception:
-        # 랜딩 생성 실패 시 원본 URL 반환
-        return link_url
+        # 랜딩 생성 실패 시 쇼핑 검색 URL 직접 반환
+        return shopping_url
 
 
 def _claim_one(prod) -> Optional[ClaimWorkResponse]:
