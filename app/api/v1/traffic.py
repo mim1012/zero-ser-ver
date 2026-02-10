@@ -13,7 +13,7 @@ import string
 import random
 from app.database.supabase_client import get_supabase_production
 
-LANDING_DOMAIN = os.getenv("LANDING_DOMAIN", "zero-landing.vercel.app")
+LANDING_DOMAIN = os.getenv("LANDING_DOMAIN", "adpangshopping.co.kr")
 
 router = APIRouter()
 
