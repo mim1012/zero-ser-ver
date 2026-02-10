@@ -1,7 +1,7 @@
 """
 Admin API - 슬롯/대기열/기기 관리
-- Slots: slot_navertest CRUD (Production DB)
-- Queue: traffic_navershopping-test 대기열 관리 (Production DB)
+- Slots: slot_naverapp CRUD (Production DB)
+- Queue: traffic-navershopping-app 대기열 관리 (Production DB)
 - Devices: 기기 관리 (Control DB)
 """
 from fastapi import APIRouter, HTTPException, Query
@@ -42,7 +42,7 @@ class EnqueueRequest(BaseModel):
 
 
 # ============================================================
-# Slots 관리 (slot_navertest — Production DB)
+# Slots 관리 (slot_naverapp — Production DB)
 # ============================================================
 
 @router.get("/slots")
@@ -57,7 +57,7 @@ async def list_slots(
         prod = get_supabase_production()
         offset = (page - 1) * limit
 
-        query = prod.table("slot_navertest").select("*", count="exact")
+        query = prod.table("slot_naverapp").select("*", count="exact")
 
         if status:
             query = query.eq("status", status)
@@ -88,7 +88,7 @@ async def create_slot(request: CreateSlotRequest):
     """슬롯 생성"""
     try:
         prod = get_supabase_production()
-        result = prod.table("slot_navertest").insert({
+        result = prod.table("slot_naverapp").insert({
             "keyword": request.keyword,
             "mid": request.mid,
             "product_name": request.product_name,
@@ -114,7 +114,7 @@ async def update_slot(slot_id: int, request: UpdateSlotRequest):
         if not update_data:
             raise HTTPException(status_code=400, detail="수정할 항목이 없습니다")
 
-        result = prod.table("slot_navertest") \
+        result = prod.table("slot_naverapp") \
             .update(update_data) \
             .eq("id", slot_id) \
             .execute()
@@ -135,7 +135,7 @@ async def delete_slot(slot_id: int):
     """슬롯 삭제"""
     try:
         prod = get_supabase_production()
-        result = prod.table("slot_navertest") \
+        result = prod.table("slot_naverapp") \
             .delete() \
             .eq("id", slot_id) \
             .execute()
@@ -161,7 +161,7 @@ async def slot_bulk_action(request: SlotBulkActionRequest):
 
         if action == "reset_counts":
             # 모든 슬롯의 success_count, fail_count 초기화
-            result = prod.table("slot_navertest") \
+            result = prod.table("slot_naverapp") \
                 .update({"success_count": 0, "fail_count": 0}) \
                 .gte("id", 0) \
                 .execute()
@@ -169,7 +169,7 @@ async def slot_bulk_action(request: SlotBulkActionRequest):
 
         elif action == "unlock_all":
             # 모든 워커 잠금 해제
-            result = prod.table("slot_navertest") \
+            result = prod.table("slot_naverapp") \
                 .update({"worker_lock": None, "locked_at": None}) \
                 .not_.is_("worker_lock", "null") \
                 .execute()
@@ -179,7 +179,7 @@ async def slot_bulk_action(request: SlotBulkActionRequest):
             if not request.slot_ids:
                 raise HTTPException(status_code=400, detail="slot_ids 필요")
             for sid in request.slot_ids:
-                prod.table("slot_navertest").delete().eq("id", sid).execute()
+                prod.table("slot_naverapp").delete().eq("id", sid).execute()
                 count += 1
 
         else:
@@ -194,7 +194,7 @@ async def slot_bulk_action(request: SlotBulkActionRequest):
 
 
 # ============================================================
-# Queue 관리 (traffic_navershopping-test — Production DB)
+# Queue 관리 (traffic-navershopping-app — Production DB)
 # ============================================================
 
 @router.get("/queue")
@@ -208,13 +208,13 @@ async def get_queue(
         offset = (page - 1) * limit
 
         # count
-        count_result = prod.table("traffic_navershopping-test") \
+        count_result = prod.table("traffic-navershopping-app") \
             .select("id", count="exact") \
             .execute()
         total = count_result.count if count_result.count is not None else 0
 
         # 목록
-        list_result = prod.table("traffic_navershopping-test") \
+        list_result = prod.table("traffic-navershopping-app") \
             .select("*") \
             .order("id", desc=False) \
             .range(offset, offset + limit - 1) \
@@ -247,7 +247,7 @@ async def enqueue_tasks(request: EnqueueRequest):
                 "link_url": request.link_url,
             })
 
-        result = prod.table("traffic_navershopping-test").insert(rows).execute()
+        result = prod.table("traffic-navershopping-app").insert(rows).execute()
         return {"status": "success", "created": len(result.data)}
 
     except Exception as e:
@@ -259,7 +259,7 @@ async def clear_queue():
     """대기열 전체 비우기"""
     try:
         prod = get_supabase_production()
-        result = prod.table("traffic_navershopping-test") \
+        result = prod.table("traffic-navershopping-app") \
             .delete() \
             .gte("id", 0) \
             .execute()

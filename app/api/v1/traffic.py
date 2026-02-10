@@ -1,14 +1,19 @@
 """
 트래픽 작업 관리 API (Production DB 기반)
-- claim-work: traffic_navershopping-test에서 1건 꺼내고 DELETE (소비형 큐)
-- complete: slot_navertest.success_count 증가 + history INSERT
-- fail: slot_navertest.fail_count 증가 + history INSERT
+- claim-work: traffic-navershopping-app에서 1건 꺼내고 DELETE (소비형 큐)
+- complete: slot_naverapp.success_count 증가 + history INSERT
+- fail: slot_naverapp.fail_count 증가 + history INSERT
 """
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from datetime import datetime
+import os
+import string
+import random
 from app.database.supabase_client import get_supabase_production
+
+LANDING_DOMAIN = os.getenv("LANDING_DOMAIN", "zero-landing.vercel.app")
 
 router = APIRouter()
 
@@ -24,10 +29,10 @@ class ClaimWorkBatchRequest(BaseModel):
     batch_size: int = 10  # 기본값 10, 최대 50
 
 class ClaimWorkResponse(BaseModel):
-    traffic_id: int          # traffic_navershopping-test.id
-    slot_id: Optional[int] = 0  # slot_navertest.id
-    product_name: str        # slot_navertest.product_name
-    nv_mid: str              # slot_navertest.mid
+    traffic_id: int          # traffic-navershopping-app.id
+    slot_id: Optional[int] = 0  # slot_naverapp.id
+    product_name: str        # slot_naverapp.product_name
+    nv_mid: str              # slot_naverapp.mid
     short_keyword: str       # traffic.keyword (풀네임)
     target_url: Optional[str] = None  # traffic.link_url
 
@@ -52,10 +57,62 @@ class FailWorkRequest(BaseModel):
 # 내부 헬퍼
 # ============================================================
 
+def _generate_slug(length: int = 6) -> str:
+    """6자리 랜덤 slug 생성 (영소문자+숫자)"""
+    chars = string.ascii_lowercase + string.digits
+    return ''.join(random.choices(chars, k=length))
+
+
+def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: str, link_url: str) -> Optional[str]:
+    """landing_redirects에서 slug 조회, 없으면 생성. 랜딩 URL 반환."""
+    if not link_url:
+        return None
+
+    try:
+        # 기존 slug 조회 (같은 slot_id + keyword 조합)
+        existing = prod.table('landing_redirects') \
+            .select('slug') \
+            .eq('keyword', keyword) \
+            .eq('target_url', link_url) \
+            .eq('active', True) \
+            .limit(1) \
+            .execute()
+
+        if existing.data:
+            slug = existing.data[0]['slug']
+            return f"https://{LANDING_DOMAIN}/r/{slug}"
+
+        # 새 slug 생성
+        for _ in range(5):  # 충돌 방지 최대 5회 시도
+            slug = _generate_slug()
+            check = prod.table('landing_redirects') \
+                .select('id') \
+                .eq('slug', slug) \
+                .limit(1) \
+                .execute()
+            if not check.data:
+                break
+
+        prod.table('landing_redirects').insert({
+            'slug': slug,
+            'keyword': keyword,
+            'target_url': link_url,
+            'product_name': product_name or '',
+            'redirect_count': 0,
+            'active': True,
+        }).execute()
+
+        return f"https://{LANDING_DOMAIN}/r/{slug}"
+
+    except Exception:
+        # 랜딩 생성 실패 시 원본 URL 반환
+        return link_url
+
+
 def _claim_one(prod) -> Optional[ClaimWorkResponse]:
-    """traffic_navershopping-test에서 1건 꺼내고 DELETE. slot_navertest에서 mid/product_name 조회."""
+    """traffic-navershopping-app에서 1건 꺼내고 DELETE. slot_naverapp에서 mid/product_name 조회."""
     # 1) 가장 오래된 1건 SELECT
-    row_result = prod.table('traffic_navershopping-test') \
+    row_result = prod.table('traffic-navershopping-app') \
         .select('*') \
         .order('id', desc=False) \
         .limit(1) \
@@ -70,11 +127,11 @@ def _claim_one(prod) -> Optional[ClaimWorkResponse]:
     keyword = row.get('keyword', '')
     link_url = row.get('link_url', '')
 
-    # 2) slot_navertest에서 mid, product_name 조회
+    # 2) slot_naverapp에서 mid, product_name 조회
     mid = ''
     product_name = ''
     if slot_id:
-        slot_result = prod.table('slot_navertest') \
+        slot_result = prod.table('slot_naverapp') \
             .select('mid, product_name') \
             .eq('id', slot_id) \
             .limit(1) \
@@ -84,10 +141,13 @@ def _claim_one(prod) -> Optional[ClaimWorkResponse]:
             product_name = slot_result.data[0].get('product_name', '')
 
     # 3) DELETE (소비형 큐)
-    prod.table('traffic_navershopping-test') \
+    prod.table('traffic-navershopping-app') \
         .delete() \
         .eq('id', traffic_id) \
         .execute()
+
+    # 4) 랜딩 URL 조합
+    landing_url = _get_or_create_landing_slug(prod, slot_id or 0, keyword, product_name, link_url)
 
     return ClaimWorkResponse(
         traffic_id=traffic_id,
@@ -95,7 +155,7 @@ def _claim_one(prod) -> Optional[ClaimWorkResponse]:
         product_name=product_name,
         nv_mid=mid,
         short_keyword=keyword,
-        target_url=link_url or None
+        target_url=landing_url
     )
 
 # ============================================================
@@ -106,7 +166,7 @@ def _claim_one(prod) -> Optional[ClaimWorkResponse]:
 async def claim_work(request: ClaimWorkRequest):
     """
     작업 1건 가져오기 (소비형 큐)
-    traffic_navershopping-test에서 가장 오래된 1건 SELECT → slot_navertest 조회 → DELETE
+    traffic-navershopping-app에서 가장 오래된 1건 SELECT → slot_naverapp 조회 → DELETE
     """
     try:
         prod = get_supabase_production()
@@ -152,15 +212,15 @@ async def claim_work_batch(request: ClaimWorkBatchRequest):
 async def complete_work(request: CompleteWorkRequest):
     """
     작업 완료 보고
-    - slot_navertest.success_count += 1
-    - slot_rank_navertest_history에 이력 INSERT
+    - slot_naverapp.success_count += 1
+    - slot_rank_naverapp_history에 이력 INSERT
     """
     try:
         prod = get_supabase_production()
 
-        # slot_navertest success_count 증가
+        # slot_naverapp success_count 증가
         if request.slot_id:
-            slot_result = prod.table('slot_navertest') \
+            slot_result = prod.table('slot_naverapp') \
                 .select('success_count') \
                 .eq('id', request.slot_id) \
                 .limit(1) \
@@ -170,14 +230,14 @@ async def complete_work(request: CompleteWorkRequest):
             if slot_result.data:
                 current_count = slot_result.data[0].get('success_count', 0) or 0
 
-            prod.table('slot_navertest') \
+            prod.table('slot_naverapp') \
                 .update({'success_count': current_count + 1}) \
                 .eq('id', request.slot_id) \
                 .execute()
 
         # history INSERT
         try:
-            prod.table('slot_rank_navertest_history').insert({
+            prod.table('slot_rank_naverapp_history').insert({
                 'slot_id': request.slot_id,
                 'device_id': request.device_id,
                 'traffic_id': request.traffic_id,
@@ -198,15 +258,15 @@ async def complete_work(request: CompleteWorkRequest):
 async def fail_work(request: FailWorkRequest):
     """
     작업 실패 보고
-    - slot_navertest.fail_count += 1
-    - slot_rank_navertest_history에 이력 INSERT
+    - slot_naverapp.fail_count += 1
+    - slot_rank_naverapp_history에 이력 INSERT
     """
     try:
         prod = get_supabase_production()
 
-        # slot_navertest fail_count 증가
+        # slot_naverapp fail_count 증가
         if request.slot_id:
-            slot_result = prod.table('slot_navertest') \
+            slot_result = prod.table('slot_naverapp') \
                 .select('fail_count') \
                 .eq('id', request.slot_id) \
                 .limit(1) \
@@ -216,14 +276,14 @@ async def fail_work(request: FailWorkRequest):
             if slot_result.data:
                 current_count = slot_result.data[0].get('fail_count', 0) or 0
 
-            prod.table('slot_navertest') \
+            prod.table('slot_naverapp') \
                 .update({'fail_count': current_count + 1}) \
                 .eq('id', request.slot_id) \
                 .execute()
 
         # history INSERT
         try:
-            prod.table('slot_rank_navertest_history').insert({
+            prod.table('slot_rank_naverapp_history').insert({
                 'slot_id': request.slot_id,
                 'device_id': request.device_id,
                 'traffic_id': request.traffic_id,

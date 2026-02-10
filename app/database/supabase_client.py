@@ -47,7 +47,7 @@ def test_production_connection() -> bool:
     """Production DB 연결 테스트"""
     try:
         client = get_supabase_production()
-        client.table('slot_navertest').select('id').limit(1).execute()
+        client.table('slot_naverapp').select('id').limit(1).execute()
         return True
     except Exception as e:
         print(f"Production DB 연결 실패: {str(e)}")

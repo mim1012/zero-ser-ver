@@ -1,6 +1,6 @@
 """
 Dashboard API - Production DB 기반 통계
-- overview: slot_navertest + traffic_navershopping-test 통계
+- overview: slot_naverapp + traffic-navershopping-app 통계
 - devices/groups: Control DB 기존 유지
 - logs: Control DB task_logs 기존 유지
 """
@@ -51,20 +51,20 @@ async def get_logs(
 async def get_stats_overview():
     """
     전체 통계 (Production DB 기반)
-    - 대기열 수: traffic_navershopping-test COUNT
-    - 슬롯 수/성공/실패: slot_navertest에서 집계
+    - 대기열 수: traffic-navershopping-app COUNT
+    - 슬롯 수/성공/실패: slot_naverapp에서 집계
     """
     try:
         prod = get_supabase_production()
 
         # 대기열 수
-        queue_result = prod.table("traffic_navershopping-test") \
+        queue_result = prod.table("traffic-navershopping-app") \
             .select("id", count="exact") \
             .execute()
         queue_count = queue_result.count if queue_result.count is not None else 0
 
         # 슬롯 통계
-        slots_result = prod.table("slot_navertest") \
+        slots_result = prod.table("slot_naverapp") \
             .select("id, success_count, fail_count, status") \
             .execute()
 
@@ -171,7 +171,7 @@ async def get_task_stats():
     """슬롯별 통계 (Production DB)"""
     try:
         prod = get_supabase_production()
-        slots = prod.table("slot_navertest").select("*").execute()
+        slots = prod.table("slot_naverapp").select("*").execute()
 
         total_success = sum((s.get('success_count') or 0) for s in slots.data)
         total_fail = sum((s.get('fail_count') or 0) for s in slots.data)
