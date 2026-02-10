@@ -81,7 +81,7 @@ def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: 
     try:
         # 기존 slug 조회 (같은 keyword 조합)
         existing = prod.table('landing_redirects') \
-            .select('slug') \
+            .select('slug, target_url') \
             .eq('keyword', keyword) \
             .eq('active', True) \
             .limit(1) \
@@ -89,6 +89,12 @@ def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: 
 
         if existing.data:
             slug = existing.data[0]['slug']
+            # target_url이 변경되었으면 업데이트
+            if existing.data[0].get('target_url') != target_url:
+                prod.table('landing_redirects') \
+                    .update({'target_url': target_url}) \
+                    .eq('slug', slug) \
+                    .execute()
             return f"https://{LANDING_DOMAIN}/r/{slug}"
 
         # 새 slug 생성
