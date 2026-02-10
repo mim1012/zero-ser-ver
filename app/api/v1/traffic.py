@@ -64,9 +64,9 @@ def _generate_slug(length: int = 6) -> str:
 
 
 def _build_shopping_search_url(keyword: str) -> str:
-    """키워드 기반 네이버 쇼핑 검색 URL 생성"""
+    """키워드 기반 네이버 통합검색 URL 생성 (모바일)"""
     from urllib.parse import quote
-    return f"https://msearch.shopping.naver.com/search/all?query={quote(keyword)}"
+    return f"https://m.search.naver.com/search.naver?query={quote(keyword)}"
 
 
 def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: str, link_url: str) -> Optional[str]:
