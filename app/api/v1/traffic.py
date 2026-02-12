@@ -63,11 +63,50 @@ def _generate_slug(length: int = 6) -> str:
     return ''.join(random.choices(chars, k=length))
 
 
-def _build_landing_target_url(keyword: str) -> str:
-    """랜딩페이지 리다이렉트 대상 — 네이버 모바일 쇼핑 검색결과
-    랜딩 → 쇼핑 검색결과 → findMid → 클릭 → 체류"""
-    from urllib.parse import quote
-    return f"https://msearch.shopping.naver.com/search/all?query={quote(keyword)}"
+def _generate_ackey(length: int = 8) -> str:
+    """네이버 자동완성 ackey 생성 (unified-runner 동일)"""
+    chars = string.ascii_lowercase + string.digits
+    return ''.join(random.choices(chars, k=length))
+
+
+def _pick_query_words(keyword: str, product_name: str) -> str:
+    """keyword + product_name에서 랜덤 3단어 추출 (unified-runner pickQueryWords 포팅)"""
+    import re
+    text = f"{keyword} {product_name}"
+    text = re.sub(r'[\[\](){}]', ' ', text)
+    text = re.sub(r'[^\w\sㄱ-ㅎㅏ-ㅣ가-힣]', ' ', text)
+    words = list(dict.fromkeys(w for w in text.split() if len(w) >= 2))  # 중복 제거, 순서 유지
+
+    tails = ["추천", "할인", "후기", "인기", "베스트", "구매", "쇼핑", "특가", "세일", "가성비", "최저가", "정품"]
+
+    random.shuffle(words)
+    selected = words[:3]
+
+    # 부족하면 꼬리 키워드 추가
+    while len(selected) < 3:
+        avail = [t for t in tails if t not in selected]
+        if not avail:
+            break
+        selected.append(random.choice(avail))
+
+    return ' '.join(selected[:3])
+
+
+def _build_landing_target_url(keyword: str, product_name: str = '') -> str:
+    """unified-runner 동일 형식: m.search.naver.com 통합검색 URL
+    sm=mtp_sug.top, where=m, ackey 포함"""
+    from urllib.parse import urlencode
+    query = _pick_query_words(keyword, product_name)
+    params = {
+        'sm': 'mtp_sug.top',
+        'where': 'm',
+        'query': query,
+        'ackey': _generate_ackey(),
+        'acq': query,
+        'acr': str(random.randint(1, 9)),
+        'qdt': '0',
+    }
+    return f"https://m.search.naver.com/search.naver?{urlencode(params)}"
 
 
 def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: str, link_url: str) -> Optional[str]:
@@ -75,8 +114,8 @@ def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: 
     if not keyword:
         return None
 
-    # 네이버 모바일 홈으로 리다이렉트 (APK가 자동완성 → ackey 생성)
-    target_url = _build_landing_target_url(keyword)
+    # unified-runner 동일: m.search.naver.com 통합검색 (매번 query/ackey 랜덤)
+    target_url = _build_landing_target_url(keyword, product_name)
 
     try:
         # 기존 slug 조회 (같은 keyword 조합)
@@ -89,12 +128,11 @@ def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: 
 
         if existing.data:
             slug = existing.data[0]['slug']
-            # target_url이 변경되었으면 업데이트
-            if existing.data[0].get('target_url') != target_url:
-                prod.table('landing_redirects') \
-                    .update({'target_url': target_url}) \
-                    .eq('slug', slug) \
-                    .execute()
+            # 매 요청마다 query/ackey가 랜덤이므로 항상 갱신
+            prod.table('landing_redirects') \
+                .update({'target_url': target_url}) \
+                .eq('slug', slug) \
+                .execute()
             return f"https://{LANDING_DOMAIN}/r/{slug}"
 
         # 새 slug 생성
