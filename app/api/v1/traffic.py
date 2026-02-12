@@ -70,17 +70,24 @@ def _generate_ackey(length: int = 8) -> str:
 
 
 def _pick_query_words(keyword: str, product_name: str) -> str:
-    """keyword + product_name에서 랜덤 3단어 추출 (unified-runner pickQueryWords 포팅)"""
+    """keyword + product_name에서 랜덤 3단어 추출 (unified-runner pickQueryWords 포팅)
+    keyword는 반드시 첫 번째로 포함"""
     import re
-    text = f"{keyword} {product_name}"
-    text = re.sub(r'[\[\](){}]', ' ', text)
-    text = re.sub(r'[^\w\sㄱ-ㅎㅏ-ㅣ가-힣]', ' ', text)
-    words = list(dict.fromkeys(w for w in text.split() if len(w) >= 2))  # 중복 제거, 순서 유지
+    # product_name에서 추가 단어 풀 만들기
+    pn_text = re.sub(r'[\[\](){}]', ' ', product_name)
+    pn_text = re.sub(r'[^\w\sㄱ-ㅎㅏ-ㅣ가-힣]', ' ', pn_text)
+    pn_words = [w for w in pn_text.split() if len(w) >= 2 and w != keyword]
 
     tails = ["추천", "할인", "후기", "인기", "베스트", "구매", "쇼핑", "특가", "세일", "가성비", "최저가", "정품"]
 
-    random.shuffle(words)
-    selected = words[:3]
+    # keyword 반드시 포함 + product_name에서 1~2단어 추가
+    selected = [keyword]
+    random.shuffle(pn_words)
+    for w in pn_words:
+        if len(selected) >= 3:
+            break
+        if w not in selected:
+            selected.append(w)
 
     # 부족하면 꼬리 키워드 추가
     while len(selected) < 3:
