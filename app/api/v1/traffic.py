@@ -101,9 +101,10 @@ def _pick_query_words(keyword: str, product_name: str) -> str:
 
 def _build_landing_target_url(keyword: str, product_name: str = '') -> str:
     """unified-runner 동일 형식: m.search.naver.com 통합검색 URL
-    sm=mtp_sug.top, where=m, ackey 포함"""
+    sm=mtp_sug.top, where=m, ackey 포함
+    query는 keyword 그대로 사용 (MID 상품이 검색결과에 나오도록)"""
     from urllib.parse import urlencode
-    query = _pick_query_words(keyword, product_name)
+    query = keyword  # keyword 그대로 사용 — MID 매칭 보장
     params = {
         'sm': 'mtp_sug.top',
         'where': 'm',
