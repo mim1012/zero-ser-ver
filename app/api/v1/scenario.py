@@ -28,7 +28,7 @@ SCENARIOS = {
     "shopping_tab_v1": {
         "id": "shopping_tab_v1",
         "name": "랜딩 → 쇼핑 검색결과 → MID 클릭 → 체류",
-        "version": 5,
+        "version": 6,
         "variables": {
             "mid": "{{task.nv_mid}}",
             "landing_url": "{{task.target_url}}"
@@ -64,13 +64,13 @@ SCENARIOS = {
                 "maxPages": 5,
                 "timeout": 60000
             },
-            # ── 5. 상품 상세페이지 체류 ──
+            # ── 5. 상품 상세페이지 진입 확인 (즉시 이탈) ──
             {
                 "id": "s05_dwell",
                 "action": "dwell",
-                "ms": [3000, 6000],
-                "scrollDist": 2000,
-                "scrollCount": [1, 3]
+                "ms": [500, 1000],
+                "scrollDist": 0,
+                "scrollCount": [0, 0]
             },
             # ── 6. 완료 보고 ──
             {
@@ -84,7 +84,7 @@ SCENARIOS = {
 
 # 활성 시나리오 + 가중치
 ACTIVE_SCENARIOS = [
-    {"id": "shopping_tab_v1", "version": 5, "weight": 100}
+    {"id": "shopping_tab_v1", "version": 6, "weight": 100}
 ]
 
 # ============================================================
