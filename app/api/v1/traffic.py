@@ -152,16 +152,24 @@ def _claim_one(prod) -> Optional[ClaimWorkResponse]:
             .limit(1) \
             .execute()
         if slot_result.data:
-            mid = slot_result.data[0].get('mid', '')
-            product_name = slot_result.data[0].get('product_name', '')
+            mid = slot_result.data[0].get('mid') or ''
+            product_name = slot_result.data[0].get('product_name') or ''
 
-    # 3) DELETE (소비형 큐)
+    # 3) mid/product_name 없으면 이 작업은 건너뛰기 (DELETE 후 None 반환)
+    if not mid or not product_name:
+        prod.table('traffic-navershopping-app') \
+            .delete() \
+            .eq('id', traffic_id) \
+            .execute()
+        return None
+
+    # 4) DELETE (소비형 큐)
     prod.table('traffic-navershopping-app') \
         .delete() \
         .eq('id', traffic_id) \
         .execute()
 
-    # 4) 랜딩 URL 조합
+    # 5) 랜딩 URL 조합
     landing_url = _get_or_create_landing_slug(prod, slot_id or 0, keyword, product_name, link_url)
 
     return ClaimWorkResponse(
@@ -185,12 +193,14 @@ async def claim_work(request: ClaimWorkRequest):
     """
     try:
         prod = get_supabase_production()
-        result = _claim_one(prod)
 
-        if result is None:
-            raise HTTPException(status_code=404, detail="사용 가능한 작업이 없습니다")
+        # 불완전 작업(mid/product_name 없음)은 건너뛰고 최대 5건까지 시도
+        for _ in range(5):
+            result = _claim_one(prod)
+            if result is not None:
+                return result
 
-        return result
+        raise HTTPException(status_code=404, detail="사용 가능한 작업이 없습니다")
 
     except HTTPException:
         raise
