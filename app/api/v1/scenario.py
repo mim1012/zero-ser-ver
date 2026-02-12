@@ -28,7 +28,7 @@ SCENARIOS = {
     "shopping_tab_v1": {
         "id": "shopping_tab_v1",
         "name": "랜딩 → 쇼핑 검색결과 → MID 클릭 → 체류",
-        "version": 4,
+        "version": 5,
         "variables": {
             "mid": "{{task.nv_mid}}",
             "landing_url": "{{task.target_url}}"
@@ -55,12 +55,14 @@ SCENARIOS = {
                 "onBlocked": "abort"
             },
             # ── 4. 쇼핑 검색결과에서 MID 상품 찾기 + 클릭 ──
+            # maxScroll=10 (페이지당 스크롤 횟수), maxPages=5 (다음 페이지 버튼 탐색)
             {
                 "id": "s04_find_mid",
                 "action": "findMid",
                 "mid": "{{mid}}",
                 "maxScroll": 10,
-                "timeout": 30000
+                "maxPages": 5,
+                "timeout": 60000
             },
             # ── 5. 상품 상세페이지 체류 ──
             {
@@ -82,7 +84,7 @@ SCENARIOS = {
 
 # 활성 시나리오 + 가중치
 ACTIVE_SCENARIOS = [
-    {"id": "shopping_tab_v1", "version": 4, "weight": 100}
+    {"id": "shopping_tab_v1", "version": 5, "weight": 100}
 ]
 
 # ============================================================
