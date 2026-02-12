@@ -1,20 +1,14 @@
-# Byte-compiled / optimized / DLL files
+# ===== Python =====
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
-build/
 develop-eggs/
 dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -23,12 +17,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
-# PyInstaller
 *.manifest
 *.spec
-
-# Unit test / coverage reports
 htmlcov/
 .tox/
 .coverage
@@ -39,43 +29,57 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
-
-# Environments
-.env
-.venv
-env/
+.venv/
 venv/
+env/
 ENV/
-env.bak/
-venv.bak/
 
-# IDEs
+# ===== Node.js =====
+node_modules/
+.next/
+.vercel/
+out/
+
+# ===== Android =====
+.gradle/
+**/app/build/
+local.properties
+*.apk
+*.ap_
+*.dex
+*.class
+.externalNativeBuild/
+.cxx/
+captures/
+*.iml
+
+# ===== Environment =====
+.env
+.env.local
+.env.production
+
+# ===== IDE =====
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# ===== OS =====
 .DS_Store
 Thumbs.db
 
-# Database
+# ===== Database =====
 *.db
 *.sqlite
 *.sqlite3
 
-# Logs
+# ===== Logs =====
 *.log
 
-# Android build
-.gradle/
-app/build/
-local.properties
-*.apk
-
-# Claude Code
+# ===== Claude Code =====
 .claude/
 
-# Misc
+# ===== Misc =====
 nul
+.omc/

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Zero Traffic</string>
+    <string name="accessibility_desc">자동 설치 및 브라우저 제어를 위한 접근성 서비스</string>
+</resources>
