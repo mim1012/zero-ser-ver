@@ -1,5 +1,6 @@
 import { getServiceSupabase } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 
 // 매 요청마다 랜덤 query/ackey 생성을 위해 동적 렌더링 강제
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,9 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  // headers() 호출로 Next.js 동적 렌더링 확실히 강제
+  await headers();
+
   const { slug } = await params;
   const supabase = getServiceSupabase();
 
