@@ -203,6 +203,13 @@ public class TrafficService extends Service {
                 // 하드코딩 UA는 WebView 버전과 불일치하여 봇 감지됨
                 webView.setWebViewClient(new WebViewClient() {
                     @Override
+                    public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                        super.onPageStarted(view, url, favicon);
+                        // 페이지 로드 시작 즉시 스텔스 주입 (봇 감지 선제 차단)
+                        view.evaluateJavascript(
+                            com.zero.traffic.engine.ActionExecutor.STEALTH_JS, null);
+                    }
+                    @Override
                     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                         return false; // 모든 URL을 WebView 내부에서 처리
                     }
@@ -296,17 +303,15 @@ public class TrafficService extends Service {
                     taskManager.fail(task.getTrafficId(), task.getSlotId(), result.getMessage());
                 }
 
-                // 5. IP 변경 (데이터 끄기/켜기)
-                updateNotification("IP 변경 중...");
-                rotateIP();
-
-                // 6. WebView 초기화 (새 브라우저 세션)
-                updateNotification("브라우저 초기화...");
+                // 5. 세션 종료 → WebView 초기화
+                updateNotification("세션 종료...");
                 resetWebView();
+                // TODO: IP 변경은 루트 또는 WRITE_SECURE_SETTINGS 권한 필요 — 현재 스킵
+                // rotateIP();
 
-                // 7. 다음 작업 전 대기
-                RandomDelay.sleepBetween(5000, 10000);
+                // 6. 새 세션 준비
                 updateNotification("대기 중...");
+                RandomDelay.sleepBetween(3000, 5000);
 
             } catch (Exception e) {
                 Logger.e("루프 오류: " + e.getMessage());
@@ -319,70 +324,95 @@ public class TrafficService extends Service {
         }
     }
 
-    // ── IP 변경 (비행기 모드 토글) ──────────────────────
+    // ── IP 변경 (비행기 모드 토글) ─────────────────────
 
-    private void rotateIP() {
-        // 방법 1: shell 명령어 (가장 확실)
+    /**
+     * 공인 IP 조회 (api.ipify.org)
+     * @return IP 문자열 or null
+     */
+    private String getPublicIP() {
         try {
-            Logger.i("IP 변경: 모바일 데이터 OFF");
-            Runtime.getRuntime().exec(new String[]{"svc", "data", "disable"}).waitFor();
-            RandomDelay.sleepBetween(3000, 5000);
-
-            Logger.i("IP 변경: 모바일 데이터 ON");
-            Runtime.getRuntime().exec(new String[]{"svc", "data", "enable"}).waitFor();
-
-            // 네트워크 복구 대기
-            RandomDelay.sleepBetween(5000, 8000);
-
-            // 네트워크 연결 확인 (최대 30초)
-            for (int i = 0; i < 15; i++) {
-                try {
-                    java.net.InetAddress addr = java.net.InetAddress.getByName("m.naver.com");
-                    if (addr != null) {
-                        Logger.i("IP 변경 완료 — 네트워크 복구됨");
-                        return;
-                    }
-                } catch (Exception ignored) {}
-                RandomDelay.sleepBetween(2000, 2000);
+            okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(5, TimeUnit.SECONDS)
+                    .readTimeout(5, TimeUnit.SECONDS)
+                    .build();
+            okhttp3.Request req = new okhttp3.Request.Builder()
+                    .url("https://api.ipify.org")
+                    .build();
+            try (okhttp3.Response resp = client.newCall(req).execute()) {
+                if (resp.isSuccessful() && resp.body() != null) {
+                    return resp.body().string().trim();
+                }
             }
-            Logger.w("IP 변경: 네트워크 복구 타임아웃 — 계속 진행");
-
         } catch (Exception e) {
-            Logger.w("IP 변경 (svc) 실패: " + e.getMessage() + " — 비행기모드로 시도");
-            // 방법 2: 비행기모드 Settings.Global (fallback)
-            rotateIPviaAirplane();
+            Logger.w("공인 IP 조회 실패: " + e.getMessage());
         }
+        return null;
     }
 
-    private void rotateIPviaAirplane() {
-        try {
-            Logger.i("IP 변경: 비행기 모드 ON");
-            Settings.Global.putInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 1);
-            RandomDelay.sleepBetween(3000, 5000);
+    /**
+     * IP 로테이션: Settings.Global 비행기 모드 토글 + 공인 IP 변경 확인
+     * WRITE_SECURE_SETTINGS 권한 필요 (ADB: pm grant com.zero.traffic android.permission.WRITE_SECURE_SETTINGS)
+     * 최대 3회 재시도
+     */
+    private void rotateIP() {
+        // 0. 변경 전 IP 기록
+        String oldIP = getPublicIP();
+        Logger.i("══ IP 변경 시작 — 현재 IP: " + (oldIP != null ? oldIP : "조회실패") + " ══");
 
-            Logger.i("IP 변경: 비행기 모드 OFF");
-            Settings.Global.putInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0);
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            Logger.i("[시도 " + attempt + "/3] 비행기 모드 토글 (Settings API)");
 
-            // 네트워크 복구 대기
-            RandomDelay.sleepBetween(5000, 8000);
-
-            for (int i = 0; i < 15; i++) {
+            try {
+                // 1. 비행기 모드 ON (Settings API + shell broadcast 폴백)
+                Logger.i("[airplane] ON");
+                Settings.Global.putInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 1);
                 try {
-                    java.net.InetAddress addr = java.net.InetAddress.getByName("m.naver.com");
-                    if (addr != null) {
-                        Logger.i("IP 변경 완료 — 네트워크 복구됨");
+                    Runtime.getRuntime().exec(new String[]{
+                        "sh", "-c", "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true"
+                    }).waitFor();
+                } catch (Exception ignored) {}
+                Logger.i("[airplane] ON 완료");
+
+                // 2. 5초 대기
+                RandomDelay.sleepBetween(5000, 5000);
+
+            } catch (Exception e) {
+                Logger.w("[airplane] ON 실패: " + e.getMessage());
+            } finally {
+                // 3. 무조건 비행기 모드 OFF
+                try {
+                    Logger.i("[airplane] OFF");
+                    Settings.Global.putInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0);
+                    try {
+                        Runtime.getRuntime().exec(new String[]{
+                            "sh", "-c", "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false"
+                        }).waitFor();
+                    } catch (Exception ignored) {}
+                    Logger.i("[airplane] OFF 완료");
+                } catch (Exception e2) {
+                    Logger.e("[airplane] OFF 실패: " + e2.getMessage());
+                }
+            }
+
+            // 4. 데이터 복구 대기 + IP 변경 확인 (최대 30초)
+            Logger.i("데이터 복구 + IP 변경 확인 대기...");
+            for (int i = 0; i < 15; i++) {
+                RandomDelay.sleepBetween(2000, 2000);
+                String newIP = getPublicIP();
+                if (newIP != null) {
+                    if (oldIP == null || !newIP.equals(oldIP)) {
+                        Logger.i("══ IP 변경 완료: " + (oldIP != null ? oldIP : "?") + " → " + newIP + " ══");
                         return;
                     }
-                } catch (Exception ignored) {}
-                RandomDelay.sleepBetween(2000, 2000);
+                    Logger.w("IP 미변경: " + newIP + " (이전과 동일)");
+                }
             }
-            Logger.w("IP 변경: 네트워크 복구 타임아웃 — 계속 진행");
 
-        } catch (SecurityException e) {
-            Logger.w("IP 변경 실패 (권한 없음): " + e.getMessage());
-        } catch (Exception e) {
-            Logger.w("IP 변경 실패: " + e.getMessage());
+            Logger.w("[시도 " + attempt + "] IP 변경 실패 — " + (attempt < 3 ? "재시도" : "포기"));
         }
+
+        Logger.e("══ IP 변경 실패 (3회 시도) — 계속 진행 ══");
     }
 
     // ── WebView 초기화 (쿠키/캐시 클리어) ──────────────

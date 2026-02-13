@@ -44,6 +44,9 @@ public class ScenarioRunner {
         Logger.i("  MID: " + task.getNvMid());
         Logger.i("  스텝: " + scenario.getSteps().size() + "개");
 
+        // ActionExecutor에 현재 작업의 키워드/MID 전달 (findMid 폴백용)
+        executor.setTaskContext(task.getKeyword(), task.getNvMid());
+
         // 변수 치환기
         VariableResolver resolver = new VariableResolver(scenario, task);
         int captchaRetryCount = 0;

