@@ -136,9 +136,9 @@ def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: 
 
         if existing.data:
             slug = existing.data[0]['slug']
-            # 매 요청마다 query/ackey가 랜덤이므로 항상 갱신
+            # 매 요청마다 query/ackey가 랜덤이므로 항상 갱신 + product_name도 동기화
             prod.table('landing_redirects') \
-                .update({'target_url': target_url}) \
+                .update({'target_url': target_url, 'product_name': product_name or ''}) \
                 .eq('slug', slug) \
                 .execute()
             return f"https://{LANDING_DOMAIN}/r/{slug}"
