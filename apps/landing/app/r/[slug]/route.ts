@@ -1,6 +1,9 @@
 import { getServiceSupabase } from '@/lib/supabase';
 import { redirect } from 'next/navigation';
 
+// 매 요청마다 랜덤 query/ackey 생성을 위해 동적 렌더링 강제
+export const dynamic = 'force-dynamic';
+
 const NAVER_SEARCH_BASE = 'https://m.search.naver.com/search.naver';
 
 // 꼬리 키워드 (쿼리 다양화용)
