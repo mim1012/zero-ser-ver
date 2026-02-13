@@ -1,8 +1,9 @@
 import { getServiceSupabase } from '@/lib/supabase';
-import { redirect } from 'next/navigation';
+import { NextResponse } from 'next/server';
 
 // 매 요청마다 랜덤 query/ackey 생성을 위해 동적 렌더링 강제
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const NAVER_SEARCH_BASE = 'https://m.search.naver.com/search.naver';
 
@@ -43,7 +44,15 @@ export async function GET(
   // 쿼리 다양화 후 네이버 검색 URL 생성
   const query = generateQuery(keyword, productName);
   const targetUrl = buildSearchUrl(query);
-  redirect(targetUrl);
+
+  return NextResponse.redirect(targetUrl, {
+    status: 307,
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    },
+  });
 }
 
 // ============ 키워드 선택 ============
