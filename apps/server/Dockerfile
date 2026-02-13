@@ -23,5 +23,5 @@ COPY apps/server/app /app/app
 # 포트 노출 (Railway는 PORT 환경 변수를 자동으로 주입)
 EXPOSE 8080
 
-# Uvicorn 서버 실행
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Uvicorn 서버 실행 (Railway가 PORT 환경변수 자동 주입, 기본값 8080)
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}
