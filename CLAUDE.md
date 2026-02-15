@@ -109,3 +109,9 @@ Open `apps/android` in Android Studio. Server URL is configured in `app/build.gr
 
 - **MySQL (Railway):** Tasks, keywords, accounts, cookies, ranks
 - **Supabase (PostgreSQL):** Device registration, groups, landing_redirects
+
+## Progress Tracking
+
+- **세션 시작 시**: `docs/PROGRESS.md`의 최근 3개 날짜 항목을 읽어 맥락 파악
+- **작업 완료 시**: 오늘 날짜로 새 항목 추가 (작업 내용, 결과, 다음 단계, 배운 것)
+- **형식**: 날짜 역순 (최신이 위), 각 날짜에 4개 섹션
