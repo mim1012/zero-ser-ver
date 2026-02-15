@@ -7,7 +7,11 @@ import com.zero.traffic.model.Scenario;
 import com.zero.traffic.model.Step;
 import com.zero.traffic.model.StepResult;
 import com.zero.traffic.model.TaskInfo;
+import com.zero.traffic.server.TaskManager;
+import com.zero.traffic.util.FingerprintCollector;
 import com.zero.traffic.util.Logger;
+
+import org.json.JSONObject;
 
 /**
  * 시나리오 실행기 — JSON DSL 파싱 → Action 순차 실행
@@ -22,6 +26,10 @@ public class ScenarioRunner {
     private final CaptchaProxy captchaProxy;
     private final ScriptEngine scriptEngine;
 
+    // Fingerprint 수집 + 서버 전송
+    private FingerprintCollector fingerprintCollector;
+    private TaskManager taskManager;
+
     private volatile boolean cancelled = false;
 
     public ScenarioRunner(WebView webView, CaptchaProxy captchaProxy, ScriptEngine scriptEngine) {
@@ -29,6 +37,13 @@ public class ScenarioRunner {
         this.executor = new ActionExecutor(webView);
         this.captchaProxy = captchaProxy;
         this.scriptEngine = scriptEngine;
+    }
+
+    /** FingerprintCollector + TaskManager 설정 (TrafficService에서 호출) */
+    public void setAnalytics(FingerprintCollector collector, TaskManager tm) {
+        this.fingerprintCollector = collector;
+        this.taskManager = tm;
+        this.executor.setFingerprintCollector(collector);
     }
 
     /**
@@ -87,18 +102,40 @@ public class ScenarioRunner {
                 }
                 if (result.isBlocked() || result.isAbort()) {
                     Logger.e("중단: " + result.getMessage());
+                    sendFingerprint(task, false);
                     return result;
                 }
                 // 일반 실패
                 Logger.e("스텝 실패: " + step.getId() + " → " + result.getMessage());
+                sendFingerprint(task, false);
                 return result;
             }
             // 스텝 성공 시 CAPTCHA 카운터 리셋
             captchaRetryCount = 0;
         }
 
+        // 시나리오 완료 — fingerprint 전송 (성공)
+        sendFingerprint(task, true);
+
         Logger.i("═══ 시나리오 완료: " + scenario.getName() + " ═══");
         return StepResult.success();
+    }
+
+    /**
+     * Fingerprint 데이터 서버에 전송
+     */
+    private void sendFingerprint(TaskInfo task, boolean success) {
+        if (fingerprintCollector == null || taskManager == null) return;
+        try {
+            JSONObject fp = fingerprintCollector.collect(webView);
+            if (!success && fp.optInt("http_status_code", 0) == 0) {
+                // 실패인데 HTTP 코드가 없으면 418로 추정 (blocked)
+                fp.put("http_status_code", 418);
+            }
+            taskManager.reportFingerprint(task.getTrafficId(), fp);
+        } catch (Exception e) {
+            Logger.w("fingerprint 전송 실패: " + e.getMessage());
+        }
     }
 
     /**

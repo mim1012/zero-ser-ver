@@ -32,6 +32,7 @@ import com.zero.traffic.network.GroupManager;
 import com.zero.traffic.network.NetworkUtils;
 import com.zero.traffic.server.ApiClient;
 import com.zero.traffic.server.TaskManager;
+import com.zero.traffic.util.FingerprintCollector;
 import com.zero.traffic.util.Logger;
 import com.zero.traffic.util.RandomDelay;
 
@@ -65,6 +66,7 @@ public class TrafficService extends Service {
     private volatile CaptchaProxy captchaProxy;
     private volatile ScenarioRunner runner;
     private volatile GroupManager groupManager;
+    private volatile FingerprintCollector fingerprintCollector;
     private WindowManager windowManager;
     private WindowManager.LayoutParams overlayParams;
     private volatile boolean webViewVisible = false;
@@ -168,7 +170,11 @@ public class TrafficService extends Service {
         captchaProxy = new CaptchaProxy(api, deviceId);
         runner = new ScenarioRunner(webView, captchaProxy, scriptEngine);
 
-        // 6. 서버 동기화
+        // 6. FingerprintCollector 초기화 + ScenarioRunner에 연결
+        fingerprintCollector = new FingerprintCollector(this);
+        runner.setAnalytics(fingerprintCollector, taskManager);
+
+        // 7. 서버 동기화
         scenarioManager.sync();
         scriptEngine.sync();
 
@@ -296,15 +302,20 @@ public class TrafficService extends Service {
                 // 3. 실행
                 StepResult result = runner.execute(scenario, task);
 
-                // 4. 결과 보고
+                // 4. 결과 보고 (실패 시 fingerprint 데이터 첨부)
                 if (result.isSuccess()) {
                     taskManager.complete(task.getTrafficId(), task.getSlotId());
                 } else {
-                    taskManager.fail(task.getTrafficId(), task.getSlotId(), result.getMessage());
+                    org.json.JSONObject fp = fingerprintCollector != null
+                            ? fingerprintCollector.collect(webView) : null;
+                    taskManager.fail(task.getTrafficId(), task.getSlotId(), result.getMessage(), fp);
                 }
 
-                // 5. 세션 종료 → WebView 초기화
+                // 5. 세션 종료 → WebView 초기화 + fingerprint 리셋
                 updateNotification("세션 종료...");
+                if (fingerprintCollector != null) {
+                    fingerprintCollector.reset();
+                }
                 resetWebView();
                 // TODO: IP 변경은 루트 또는 WRITE_SECURE_SETTINGS 권한 필요 — 현재 스킵
                 // rotateIP();
@@ -324,7 +335,7 @@ public class TrafficService extends Service {
         }
     }
 
-    // ── IP 변경 (비행기 모드 토글) ─────────────────────
+    // ── IP 변경 (모바일 데이터 토글) ─────────────────────
 
     /**
      * 공인 IP 조회 (api.ipify.org)
@@ -351,53 +362,69 @@ public class TrafficService extends Service {
     }
 
     /**
-     * IP 로테이션: Settings.Global 비행기 모드 토글 + 공인 IP 변경 확인
+     * 모바일 데이터 토글로 IP 변경 (비행기 모드보다 빠르고 안정적)
      * WRITE_SECURE_SETTINGS 권한 필요 (ADB: pm grant com.zero.traffic android.permission.WRITE_SECURE_SETTINGS)
      * 최대 3회 재시도
      */
     private void rotateIP() {
-        // 0. 변경 전 IP 기록
         String oldIP = getPublicIP();
-        Logger.i("══ IP 변경 시작 — 현재 IP: " + (oldIP != null ? oldIP : "조회실패") + " ══");
+        Logger.i("══ IP 변경 시작 (데이터 토글) — 현재 IP: " + (oldIP != null ? oldIP : "조회실패") + " ══");
 
         for (int attempt = 1; attempt <= 3; attempt++) {
-            Logger.i("[시도 " + attempt + "/3] 비행기 모드 토글 (Settings API)");
+            Logger.i("[시도 " + attempt + "/3] 모바일 데이터 토글");
 
             try {
-                // 1. 비행기 모드 ON (Settings API + shell broadcast 폴백)
-                Logger.i("[airplane] ON");
-                Settings.Global.putInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 1);
+                // 1. 모바일 데이터 OFF
+                Logger.i("[data] OFF");
+                Settings.Global.putInt(getContentResolver(), "mobile_data", 0);
+                // TelephonyManager를 통한 실제 데이터 연결 해제
                 try {
-                    Runtime.getRuntime().exec(new String[]{
-                        "sh", "-c", "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true"
-                    }).waitFor();
-                } catch (Exception ignored) {}
-                Logger.i("[airplane] ON 완료");
+                    android.telephony.TelephonyManager tm =
+                        (android.telephony.TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+                    java.lang.reflect.Method setDataEnabled =
+                        tm.getClass().getDeclaredMethod("setDataEnabled", boolean.class);
+                    setDataEnabled.invoke(tm, false);
+                    Logger.i("[data] TelephonyManager OFF 성공");
+                } catch (Exception e) {
+                    Logger.w("[data] TelephonyManager OFF 실패, svc 폴백: " + e.getMessage());
+                    try {
+                        Runtime.getRuntime().exec(new String[]{"sh", "-c", "svc data disable"}).waitFor();
+                    } catch (Exception ignored) {}
+                }
 
-                // 2. 5초 대기
-                RandomDelay.sleepBetween(5000, 5000);
+                // 2. 3초 대기 (비행기모드 5초보다 빠름)
+                RandomDelay.sleepBetween(3000, 3000);
+                Logger.i("[data] OFF 완료 — 3초 대기 후 ON");
 
             } catch (Exception e) {
-                Logger.w("[airplane] ON 실패: " + e.getMessage());
+                Logger.w("[data] OFF 실패: " + e.getMessage());
             } finally {
-                // 3. 무조건 비행기 모드 OFF
+                // 3. 무조건 데이터 ON
                 try {
-                    Logger.i("[airplane] OFF");
-                    Settings.Global.putInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0);
+                    Logger.i("[data] ON");
+                    Settings.Global.putInt(getContentResolver(), "mobile_data", 1);
                     try {
-                        Runtime.getRuntime().exec(new String[]{
-                            "sh", "-c", "am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false"
-                        }).waitFor();
-                    } catch (Exception ignored) {}
-                    Logger.i("[airplane] OFF 완료");
+                        android.telephony.TelephonyManager tm =
+                            (android.telephony.TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+                        java.lang.reflect.Method setDataEnabled =
+                            tm.getClass().getDeclaredMethod("setDataEnabled", boolean.class);
+                        setDataEnabled.invoke(tm, true);
+                        Logger.i("[data] TelephonyManager ON 성공");
+                    } catch (Exception e) {
+                        Logger.w("[data] TelephonyManager ON 실패, svc 폴백: " + e.getMessage());
+                        try {
+                            Runtime.getRuntime().exec(new String[]{"sh", "-c", "svc data enable"}).waitFor();
+                        } catch (Exception ignored) {}
+                    }
+                    Logger.i("[data] ON 완료");
                 } catch (Exception e2) {
-                    Logger.e("[airplane] OFF 실패: " + e2.getMessage());
+                    Logger.e("[data] ON 실패: " + e2.getMessage());
                 }
             }
 
-            // 4. 데이터 복구 대기 + IP 변경 확인 (최대 30초)
-            Logger.i("데이터 복구 + IP 변경 확인 대기...");
-            for (int i = 0; i < 15; i++) {
+            // 4. IP 변경 확인 (최대 20초 — 데이터 토글은 복구 빠름)
+            Logger.i("IP 변경 확인 대기...");
+            for (int i = 0; i < 10; i++) {
                 RandomDelay.sleepBetween(2000, 2000);
                 String newIP = getPublicIP();
                 if (newIP != null) {
@@ -417,6 +444,15 @@ public class TrafficService extends Service {
 
     // ── WebView 초기화 (쿠키/캐시 클리어) ──────────────
 
+    /** Naver 쿠키 유지 대상 도메인 */
+    private static final String[] NAVER_COOKIE_DOMAINS = {
+        ".naver.com", "naver.com",
+        ".shopping.naver.com", "shopping.naver.com",
+        ".smartstore.naver.com", "smartstore.naver.com",
+        ".search.naver.com", "search.naver.com",
+        ".msearch.shopping.naver.com"
+    };
+
     private void resetWebView() {
         CountDownLatch latch = new CountDownLatch(1);
         mainHandler.post(() -> {
@@ -425,10 +461,50 @@ public class TrafficService extends Service {
                     webView.stopLoading();
                     webView.clearCache(true);
                     webView.clearHistory();
-                    android.webkit.CookieManager.getInstance().removeAllCookies(null);
-                    android.webkit.CookieManager.getInstance().flush();
+
+                    // Naver 쿠키는 유지, 나머지만 삭제
+                    // (Chrome은 Naver 쿠키(NNB, NID 등) 유지 → "신뢰된 사용자" 인식)
+                    android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
+                    String[] domains = {
+                        "https://www.naver.com",
+                        "https://m.naver.com",
+                        "https://search.naver.com",
+                        "https://m.search.naver.com",
+                        "https://shopping.naver.com",
+                        "https://msearch.shopping.naver.com",
+                        "https://smartstore.naver.com",
+                        "https://cr3.shopping.naver.com"
+                    };
+
+                    // Naver 도메인 쿠키 백업
+                    java.util.Map<String, String> naverCookies = new java.util.LinkedHashMap<>();
+                    for (String domain : domains) {
+                        String cookies = cm.getCookie(domain);
+                        if (cookies != null && !cookies.isEmpty()) {
+                            naverCookies.put(domain, cookies);
+                        }
+                    }
+
+                    // 전체 쿠키 삭제
+                    cm.removeAllCookies(null);
+
+                    // Naver 쿠키 복원
+                    int restored = 0;
+                    for (java.util.Map.Entry<String, String> entry : naverCookies.entrySet()) {
+                        String domain = entry.getKey();
+                        String[] cookieParts = entry.getValue().split(";");
+                        for (String cookie : cookieParts) {
+                            String trimmed = cookie.trim();
+                            if (!trimmed.isEmpty()) {
+                                cm.setCookie(domain, trimmed);
+                                restored++;
+                            }
+                        }
+                    }
+                    cm.flush();
+
                     webView.loadUrl("about:blank");
-                    Logger.i("WebView 초기화 완료 (캐시/쿠키 클리어)");
+                    Logger.i("WebView 초기화 완료 (Naver 쿠키 " + restored + "개 유지, 나머지 삭제)");
                 }
             } catch (Exception e) {
                 Logger.w("WebView 초기화 실패: " + e.getMessage());

@@ -16,7 +16,7 @@
     <uses-permission android:name="android.permission.WRITE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
 
-    <!-- IP 회전 (비행기모드 토글) — adb shell pm grant 필요 -->
+    <!-- IP 회전 (모바일 데이터 토글) — adb shell pm grant 필요 -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
 

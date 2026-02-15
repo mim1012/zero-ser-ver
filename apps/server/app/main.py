@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from app.api.v1 import traffic, headers, devices_supabase, dashboard, config, automation, admin, scenario
+from app.api.v1 import traffic, headers, devices_supabase, dashboard, config, automation, admin, scenario, analytics
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +30,7 @@ app.include_router(config.router, prefix="/zero/api/v1", tags=["config"])
 app.include_router(automation.router, prefix="/zero/api/v1", tags=["automation"])
 app.include_router(admin.router, prefix="/zero/api/v1/admin", tags=["admin"])
 app.include_router(scenario.router, prefix="/zero/api/v1", tags=["scenario"])
+app.include_router(analytics.router, prefix="/zero/api/v1/analytics", tags=["analytics"])
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -38,6 +39,17 @@ async def dashboard_page():
     with open("app/templates/dashboard.html", "r", encoding="utf-8") as f:
         html_content = f.read()
     return HTMLResponse(content=html_content)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """서버 시작 시 학습 루프 실행"""
+    import asyncio
+    import os
+    if os.getenv("ANALYTICS_LOOP_ENABLED", "false").lower() == "true":
+        from app.analytics.learning_loop import auto_learning_loop
+        asyncio.create_task(auto_learning_loop())
+        logger.info("Analytics learning loop started")
 
 
 @app.get("/")

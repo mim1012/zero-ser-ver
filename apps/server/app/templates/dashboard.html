@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zero Control Panel</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <style>
         :root {
             --pico-primary: #0ea5a0;
@@ -385,6 +386,7 @@
     <button class="tab-btn" data-tab="tasks" onclick="switchTab('tasks')">Tasks</button>
     <button class="tab-btn" data-tab="devices" onclick="switchTab('devices')">Devices</button>
     <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">Logs</button>
+    <button class="tab-btn" data-tab="analytics" onclick="switchTab('analytics')">Analytics</button>
 </div>
 
 <!-- ==================== TAB: OVERVIEW ==================== -->
@@ -545,6 +547,133 @@
     </div>
 </div>
 
+<!-- ==================== TAB: ANALYTICS ==================== -->
+<div id="tab-analytics" class="tab-content">
+
+    <!-- Stat Cards -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="label">Fingerprints (24h)</div>
+            <div class="value c-teal" id="an-total">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Block Rate (24h)</div>
+            <div class="value c-red" id="an-blockrate">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Applied Patches</div>
+            <div class="value c-green" id="an-patches">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Model Accuracy</div>
+            <div class="value c-blue" id="an-accuracy">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Devices Reporting</div>
+            <div class="value c-teal" id="an-devices">-</div>
+        </div>
+    </div>
+
+    <!-- Block Rate Chart -->
+    <div class="panel" style="margin-bottom:20px;">
+        <div class="panel-header">
+            <h3>Block Rate (Hourly, Last 24h)</h3>
+            <button class="btn btn-sm btn-primary" onclick="triggerAnalysis()">Trigger Analysis</button>
+        </div>
+        <div style="padding:16px;height:280px;">
+            <canvas id="blockRateChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Two-column: Recent Analyses + Config Patches -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
+
+        <!-- Recent Analyses -->
+        <div class="panel">
+            <div class="panel-header"><h3>Recent Analyses</h3></div>
+            <table>
+                <thead><tr>
+                    <th>Time</th><th>Type</th><th>Accuracy</th><th>Confidence</th><th>Applied</th><th>Actions</th>
+                </tr></thead>
+                <tbody id="an-analyses-body">
+                    <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Config Patches -->
+        <div class="panel">
+            <div class="panel-header"><h3>Config Patches</h3></div>
+            <table>
+                <thead><tr>
+                    <th>Time</th><th>File</th><th>Key Path</th><th>Before</th><th>After</th><th>Status</th>
+                </tr></thead>
+                <tbody id="an-patches-body">
+                    <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Top Block Reasons (SHAP) -->
+    <div class="panel" style="margin-bottom:20px;">
+        <div class="panel-header"><h3>Top Block Reasons (SHAP Analysis)</h3></div>
+        <table>
+            <thead><tr>
+                <th>Feature</th><th>Passed Mean</th><th>Blocked Mean</th><th>Difference</th><th>Importance</th><th>Direction</th>
+            </tr></thead>
+            <tbody id="an-shap-body">
+                <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Model Performance Chart -->
+    <div class="panel" style="margin-bottom:20px;">
+        <div class="panel-header"><h3>Model Performance Trend</h3></div>
+        <div style="padding:16px;height:220px;">
+            <canvas id="modelPerfChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Config Impact -->
+    <div class="panel" style="margin-bottom:20px;">
+        <div class="panel-header"><h3>Config Impact (Before/After Block Rate)</h3></div>
+        <table>
+            <thead><tr>
+                <th>Applied</th><th>File</th><th>Before Rate</th><th>After Rate</th><th>Delta</th><th>Verdict</th><th>Samples</th>
+            </tr></thead>
+            <tbody id="an-impact-body">
+                <tr><td colspan="7" class="empty-state">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Device Health -->
+    <div class="section-title">Device Health (24h)</div>
+    <div class="panel">
+        <div class="panel-header">
+            <h3>Per-Device Success Rate</h3>
+            <span style="font-size:12px;color:var(--text-muted);">Click column to sort, click row to expand history</span>
+        </div>
+        <table>
+            <thead><tr>
+                <th style="cursor:pointer" onclick="sortDeviceHealth('device_id')">Device ID</th>
+                <th style="cursor:pointer" onclick="sortDeviceHealth('device_model')">Model</th>
+                <th style="cursor:pointer" onclick="sortDeviceHealth('total_tasks')">Tasks</th>
+                <th style="cursor:pointer" onclick="sortDeviceHealth('success_count')">Success</th>
+                <th style="cursor:pointer" onclick="sortDeviceHealth('block_count')">Blocked</th>
+                <th style="cursor:pointer" onclick="sortDeviceHealth('success_rate')">Success Rate</th>
+                <th style="cursor:pointer" onclick="sortDeviceHealth('avg_navigation_ms')">Avg Nav (ms)</th>
+                <th>Last Blocked</th>
+            </tr></thead>
+            <tbody id="an-health-body">
+                <tr><td colspan="8" class="empty-state">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
 <!-- ==================== MODALS ==================== -->
 
 <!-- Create Slot Modal -->
@@ -690,6 +819,7 @@ function refreshCurrentTab() {
     else if (currentTab === 'tasks') { loadSlots(); loadQueue(); }
     else if (currentTab === 'devices') loadDevices();
     else if (currentTab === 'logs') loadLogs();
+    else if (currentTab === 'analytics') loadAnalytics();
     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ko-KR');
 }
 
@@ -1106,6 +1236,384 @@ function toast(msg, type) {
     el.textContent = msg;
     c.appendChild(el);
     setTimeout(() => el.remove(), 4000);
+}
+
+// ============================================================
+// Analytics
+// ============================================================
+let blockRateChart = null;
+let modelPerfChart = null;
+
+async function loadAnalytics() {
+    await Promise.all([
+        loadAnalyticsSummary(),
+        loadBlockRateChart(),
+        loadRecentAnalyses(),
+        loadConfigPatches(),
+        loadTopShap(),
+        loadModelPerformance(),
+        loadConfigImpact(),
+        loadDeviceHealth(),
+    ]);
+}
+
+async function loadAnalyticsSummary() {
+    try {
+        const res = await fetch(`${API}/analytics/stats/summary`);
+        const d = await res.json();
+        document.getElementById('an-total').textContent = (d.total_fingerprints || 0).toLocaleString();
+        document.getElementById('an-blockrate').textContent = (d.block_rate || 0) + '%';
+        document.getElementById('an-patches').textContent = (d.applied_patches || 0).toLocaleString();
+        document.getElementById('an-accuracy').textContent = d.model_accuracy ? (d.model_accuracy * 100).toFixed(1) + '%' : '-';
+        document.getElementById('an-devices').textContent = (d.unique_devices_reporting || 0).toLocaleString();
+    } catch (e) { console.error('Analytics summary error:', e); }
+}
+
+async function loadBlockRateChart() {
+    try {
+        const res = await fetch(`${API}/analytics/block-rate/timeseries?hours=24`);
+        const d = await res.json();
+        const ts = d.timeseries || [];
+
+        const labels = ts.map(t => t.hour ? t.hour.substring(11, 16) : '');
+        const passed = ts.map(t => t.passed || 0);
+        const blocked = ts.map(t => t.blocked || 0);
+
+        const ctx = document.getElementById('blockRateChart');
+        if (blockRateChart) blockRateChart.destroy();
+        blockRateChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: 'Passed', data: passed, backgroundColor: 'rgba(16,185,129,0.7)', borderRadius: 3 },
+                    { label: 'Blocked', data: blocked, backgroundColor: 'rgba(239,68,68,0.7)', borderRadius: 3 },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#8b8f98', font: { size: 11 } } } },
+                scales: {
+                    x: { stacked: true, ticks: { color: '#8b8f98', font: { size: 10 } }, grid: { color: 'rgba(46,50,58,0.5)' } },
+                    y: { stacked: true, ticks: { color: '#8b8f98', font: { size: 10 } }, grid: { color: 'rgba(46,50,58,0.5)' } },
+                },
+            },
+        });
+    } catch (e) { console.error('Block rate chart error:', e); }
+}
+
+async function loadRecentAnalyses() {
+    try {
+        const res = await fetch(`${API}/analytics/suggestions?limit=10`);
+        const d = await res.json();
+        const tbody = document.getElementById('an-analyses-body');
+        if (!d.data || d.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No analyses yet</td></tr>';
+            return;
+        }
+        tbody.innerHTML = d.data.map(a => {
+            const shap = a.shap_features || {};
+            const llm = a.llm_suggestion || {};
+            const accuracy = shap.model_accuracy ? (shap.model_accuracy * 100).toFixed(1) + '%' : '-';
+            const confidence = llm.confidence ? (llm.confidence * 100).toFixed(0) + '%' : '-';
+            const appliedBadge = a.applied
+                ? '<span class="badge badge-completed">Applied</span>'
+                : `<span class="badge badge-pending">Pending</span>`;
+            const applyBtn = !a.applied && llm.config_patches && llm.config_patches.length > 0
+                ? `<button class="btn btn-sm btn-primary" onclick="applyAnalysisFix(${a.id})">Apply</button>`
+                : '';
+            return `<tr>
+                <td>${a.created_at ? new Date(a.created_at).toLocaleString('ko-KR') : '-'}</td>
+                <td>${esc(a.analysis_type || '-')}</td>
+                <td>${accuracy}</td>
+                <td>${confidence}</td>
+                <td>${appliedBadge}</td>
+                <td>${applyBtn}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) { console.error('Recent analyses error:', e); }
+}
+
+async function loadConfigPatches() {
+    try {
+        const res = await fetch(`${API}/analytics/history?limit=10`);
+        const d = await res.json();
+        const tbody = document.getElementById('an-patches-body');
+        if (!d.data || d.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No patches yet</td></tr>';
+            return;
+        }
+        tbody.innerHTML = d.data.map(p => {
+            const before = p.before_value ? JSON.stringify(p.before_value).substring(0, 30) : '-';
+            const after = p.after_value ? JSON.stringify(p.after_value).substring(0, 30) : '-';
+            const keyPath = p.patch_type || '-';
+            const statusCls = p.status === 'applied' ? 'completed' : 'pending';
+            return `<tr>
+                <td>${p.created_at ? new Date(p.created_at).toLocaleString('ko-KR') : '-'}</td>
+                <td>${esc(p.config_file || '-')}</td>
+                <td>${esc(keyPath)}</td>
+                <td title="${esc(before)}">${esc(before)}</td>
+                <td title="${esc(after)}">${esc(after)}</td>
+                <td><span class="badge badge-${statusCls}">${esc(p.status || '-')}</span></td>
+            </tr>`;
+        }).join('');
+    } catch (e) { console.error('Config patches error:', e); }
+}
+
+async function loadTopShap() {
+    try {
+        const res = await fetch(`${API}/analytics/suggestions?limit=1`);
+        const d = await res.json();
+        const tbody = document.getElementById('an-shap-body');
+        if (!d.data || d.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No analysis data</td></tr>';
+            return;
+        }
+        const shap = d.data[0].shap_features || {};
+        const diffs = shap.top_differences || [];
+        if (diffs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No SHAP differences</td></tr>';
+            return;
+        }
+        tbody.innerHTML = diffs.slice(0, 5).map(f => {
+            const dirCls = f.direction === 'passed_higher' ? 'c-green' : 'c-red';
+            return `<tr>
+                <td>${esc(f.feature || '')}</td>
+                <td>${f.passed_mean}</td>
+                <td>${f.blocked_mean}</td>
+                <td class="${dirCls}">${f.difference > 0 ? '+' : ''}${f.difference}</td>
+                <td>${f.shap_importance ? f.shap_importance.toFixed(4) : '-'}</td>
+                <td><span class="badge badge-${f.direction === 'passed_higher' ? 'completed' : 'failed'}">${f.direction === 'passed_higher' ? 'Passed Higher' : 'Blocked Higher'}</span></td>
+            </tr>`;
+        }).join('');
+    } catch (e) { console.error('SHAP error:', e); }
+}
+
+async function loadModelPerformance() {
+    try {
+        const res = await fetch(`${API}/analytics/model-performance?limit=20`);
+        const d = await res.json();
+        const perf = d.performance || [];
+
+        const labels = perf.map((p, i) => p.created_at ? new Date(p.created_at).toLocaleDateString('ko-KR') : '#' + (i + 1));
+        const accuracies = perf.map(p => p.model_accuracy ? (p.model_accuracy * 100) : 0);
+
+        const ctx = document.getElementById('modelPerfChart');
+        if (modelPerfChart) modelPerfChart.destroy();
+        modelPerfChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Accuracy (%)',
+                    data: accuracies,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59,130,246,0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#3b82f6',
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#8b8f98', font: { size: 11 } } } },
+                scales: {
+                    x: { ticks: { color: '#8b8f98', font: { size: 10 } }, grid: { color: 'rgba(46,50,58,0.5)' } },
+                    y: { min: 0, max: 100, ticks: { color: '#8b8f98', font: { size: 10 } }, grid: { color: 'rgba(46,50,58,0.5)' } },
+                },
+            },
+        });
+    } catch (e) { console.error('Model perf error:', e); }
+}
+
+async function loadConfigImpact() {
+    try {
+        const res = await fetch(`${API}/analytics/config-impact?limit=10`);
+        const d = await res.json();
+        const tbody = document.getElementById('an-impact-body');
+        if (!d.impacts || d.impacts.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No impact data</td></tr>';
+            return;
+        }
+        tbody.innerHTML = d.impacts.map(i => {
+            const verdictCls = i.verdict === 'improved' ? 'completed' : (i.verdict === 'degraded' ? 'failed' : 'assigned');
+            const deltaCls = i.delta < 0 ? 'c-green' : (i.delta > 0 ? 'c-red' : '');
+            return `<tr>
+                <td>${i.applied_at ? new Date(i.applied_at).toLocaleString('ko-KR') : '-'}</td>
+                <td>${esc(i.config_file || '-')}</td>
+                <td>${i.block_rate_before}%</td>
+                <td>${i.block_rate_after}%</td>
+                <td class="${deltaCls}">${i.delta > 0 ? '+' : ''}${i.delta}%</td>
+                <td><span class="badge badge-${verdictCls}">${i.verdict}</span></td>
+                <td>${i.samples_before}/${i.samples_after}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) { console.error('Config impact error:', e); }
+}
+
+let cachedDeviceHealth = [];
+let deviceHealthSortKey = 'success_rate';
+let deviceHealthSortAsc = true;
+let expandedDeviceId = null;
+
+async function loadDeviceHealth() {
+    try {
+        const res = await fetch(`${API}/analytics/device-health?limit=50`);
+        const d = await res.json();
+        cachedDeviceHealth = d.devices || [];
+        renderDeviceHealthTable();
+    } catch (e) { console.error('Device health error:', e); }
+}
+
+function sortDeviceHealth(key) {
+    if (deviceHealthSortKey === key) {
+        deviceHealthSortAsc = !deviceHealthSortAsc;
+    } else {
+        deviceHealthSortKey = key;
+        deviceHealthSortAsc = true;
+    }
+    renderDeviceHealthTable();
+}
+
+function renderDeviceHealthTable() {
+    const tbody = document.getElementById('an-health-body');
+    if (!cachedDeviceHealth || cachedDeviceHealth.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No device data</td></tr>';
+        return;
+    }
+    const sorted = [...cachedDeviceHealth].sort((a, b) => {
+        let va = a[deviceHealthSortKey] || 0;
+        let vb = b[deviceHealthSortKey] || 0;
+        if (typeof va === 'string') va = va.toLowerCase();
+        if (typeof vb === 'string') vb = vb.toLowerCase();
+        if (va < vb) return deviceHealthSortAsc ? -1 : 1;
+        if (va > vb) return deviceHealthSortAsc ? 1 : -1;
+        return 0;
+    });
+    tbody.innerHTML = sorted.map(dev => {
+        const rate = dev.success_rate || 0;
+        const rateCls = rate >= 90 ? 'c-green' : (rate >= 70 ? 'c-yellow' : 'c-red');
+        const blocked = dev.last_blocked_at ? new Date(dev.last_blocked_at).toLocaleString('ko-KR') : '-';
+        const did = esc(dev.device_id || '');
+        return `<tr style="cursor:pointer" onclick="toggleDeviceSparkline('${did}')">
+            <td>${did}</td>
+            <td>${esc(dev.device_model || '-')}</td>
+            <td>${dev.total_tasks || 0}</td>
+            <td class="c-green">${dev.success_count || 0}</td>
+            <td class="c-red">${dev.block_count || 0}</td>
+            <td class="${rateCls}" style="font-weight:600">${rate}%</td>
+            <td>${dev.avg_navigation_ms || 0}ms</td>
+            <td>${blocked}</td>
+        </tr>
+        <tr id="spark-${did}" style="display:none">
+            <td colspan="8" style="padding:8px 14px;background:var(--bg-surface)">
+                <div style="height:80px;"><canvas id="sparkCanvas-${did}"></canvas></div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+async function toggleDeviceSparkline(deviceId) {
+    const row = document.getElementById('spark-' + deviceId);
+    if (!row) return;
+    if (expandedDeviceId === deviceId) {
+        row.style.display = 'none';
+        expandedDeviceId = null;
+        return;
+    }
+    // Collapse previous
+    if (expandedDeviceId) {
+        const prev = document.getElementById('spark-' + expandedDeviceId);
+        if (prev) prev.style.display = 'none';
+    }
+    expandedDeviceId = deviceId;
+    row.style.display = '';
+
+    try {
+        const res = await fetch(`${API}/analytics/device-health/${encodeURIComponent(deviceId)}/history?days=7`);
+        const d = await res.json();
+        const history = d.history || [];
+        const labels = history.map(h => h.date ? h.date.substring(5) : '');
+        const rates = history.map(h => h.success_rate || 0);
+
+        const ctx = document.getElementById('sparkCanvas-' + deviceId);
+        if (!ctx) return;
+        // Destroy previous chart on this canvas if any
+        const existing = Chart.getChart(ctx);
+        if (existing) existing.destroy();
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Success Rate %',
+                    data: rates,
+                    borderColor: '#0ea5a0',
+                    backgroundColor: 'rgba(14,165,160,0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#0ea5a0',
+                    borderWidth: 2,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#8b8f98', font: { size: 9 } }, grid: { display: false } },
+                    y: { min: 0, max: 100, ticks: { color: '#8b8f98', font: { size: 9 } }, grid: { color: 'rgba(46,50,58,0.3)' } },
+                },
+            },
+        });
+    } catch (e) { console.error('Sparkline error:', e); }
+}
+
+async function triggerAnalysis() {
+    if (!confirm('Run ML analysis on the last 24h data?')) return;
+    try {
+        toast('Analysis started...', 'info');
+        const res = await fetch(`${API}/analytics/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ min_samples: 5, hours_back: 24 })
+        });
+        const d = await res.json();
+        if (d.status === 'success') {
+            toast('Analysis complete! Accuracy: ' + ((d.results.model_accuracy || 0) * 100).toFixed(1) + '%', 'success');
+            loadAnalytics();
+        } else {
+            toast(d.message || 'Analysis returned no results', 'error');
+        }
+    } catch (e) {
+        toast('Analysis failed: ' + e.message, 'error');
+    }
+}
+
+async function applyAnalysisFix(analysisId) {
+    if (!confirm('Apply config patches from analysis #' + analysisId + '? This will modify live config files.')) return;
+    try {
+        const res = await fetch(`${API}/analytics/apply-fix`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ analysis_id: analysisId, dry_run: false })
+        });
+        const d = await res.json();
+        if (d.status === 'success') {
+            const applied = (d.result && d.result.applied) ? d.result.applied.length : 0;
+            toast(`Applied ${applied} patches`, 'success');
+            loadAnalytics();
+        } else {
+            toast(d.message || 'Apply failed', 'error');
+        }
+    } catch (e) {
+        toast('Apply failed: ' + e.message, 'error');
+    }
 }
 
 // ============================================================

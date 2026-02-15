@@ -8,16 +8,24 @@ import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import androidx.webkit.UserAgentMetadata;
+import androidx.webkit.WebSettingsCompat;
+import androidx.webkit.WebViewFeature;
+
 import com.zero.traffic.model.Step;
 import com.zero.traffic.model.StepResult;
+import com.zero.traffic.util.FingerprintCollector;
 import com.zero.traffic.util.Logger;
 import com.zero.traffic.util.RandomDelay;
 
 import org.json.JSONObject;
 
+import java.util.Arrays;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -35,9 +43,34 @@ public class ActionExecutor {
     private String taskKeyword = "";
     private String taskMid = "";
 
+    // 캐시된 Chrome UA (메인 스레드에서 설정, IO 스레드에서 읽기)
+    private volatile String cachedChromeUA = "";
+
+    // Fingerprint 수집기 (ML 분석용)
+    private FingerprintCollector fingerprintCollector;
+
+    // ── 쇼핑 도메인 판별 (Chrome Intent 라우팅용) ──
+
+    private static final String[] SHOPPING_DOMAINS = {
+        "cr3.shopping.naver.com", "msearch.shopping.naver.com",
+        "shopping.naver.com", "smartstore.naver.com", "brand.naver.com"
+    };
+
+    private static boolean isShoppingDomain(String url) {
+        for (String d : SHOPPING_DOMAINS) {
+            if (url.contains(d)) return true;
+        }
+        return false;
+    }
+
     public ActionExecutor(WebView webView) {
         this.webView = webView;
         this.mainHandler = new Handler(Looper.getMainLooper());
+    }
+
+    /** FingerprintCollector 설정 (TrafficService에서 호출) */
+    public void setFingerprintCollector(FingerprintCollector collector) {
+        this.fingerprintCollector = collector;
     }
 
     /** ScenarioRunner에서 호출 — 현재 작업의 키워드/MID 전달 */
@@ -61,7 +94,31 @@ public class ActionExecutor {
         "if(navigator.getBattery){navigator.getBattery=()=>Promise.resolve({" +
         "charging:true,chargingTime:0,dischargingTime:Infinity," +
         "level:0.85+Math.random()*0.1," +
-        "addEventListener:()=>{},removeEventListener:()=>{}});}";
+        "addEventListener:()=>{},removeEventListener:()=>{}});}" +
+        // navigator.userAgentData brands: Android WebView → Google Chrome
+        "if(navigator.userAgentData){" +
+        "var _oUAD=navigator.userAgentData;" +
+        "var _fB=function(b){return b.brand==='Android WebView'?{brand:'Google Chrome',version:b.version}:b;};" +
+        "Object.defineProperty(navigator,'userAgentData',{get:function(){return{" +
+        "brands:(_oUAD.brands||[]).map(_fB)," +
+        "mobile:_oUAD.mobile," +
+        "platform:_oUAD.platform," +
+        "getHighEntropyValues:function(h){return _oUAD.getHighEntropyValues(h).then(function(v){" +
+        "v.brands=(v.brands||[]).map(_fB);" +
+        "if(v.fullVersionList)v.fullVersionList=v.fullVersionList.map(_fB);" +
+        "return v;})}" +
+        "};},configurable:true});}";
+
+    /**
+     * 쇼핑 도메인 요청을 HttpURLConnection으로 프록시
+     * WebView가 자동 추가하는 X-Requested-With 헤더 제거
+     */
+    /** WebView UA에서 wv/Version 마커 제거 → Chrome UA 생성 */
+    private static String toChromeUA(String webviewUA) {
+        return webviewUA
+            .replace("; wv)", ")")
+            .replaceAll("Version/\\d+\\.\\d+\\s*", "");
+    }
 
     private float cachedDpr = 0;
 
@@ -179,10 +236,286 @@ public class ActionExecutor {
                 return;
             }
 
+            // Chrome-like User-Agent 설정 (wv, Version/4.0 제거)
+            String defaultUA = webView.getSettings().getUserAgentString();
+            String chromeUA = toChromeUA(defaultUA);
+            webView.getSettings().setUserAgentString(chromeUA);
+
+            // OkHttp 프록시용 UA 캐시 (IO 스레드에서 WebView 접근 불가)
+            cachedChromeUA = chromeUA.replaceAll("Chrome/[\\d.]+", "Chrome/131.0.0.0");
+
+            // sec-ch-ua 엔진 레벨 오버라이드 (AndroidX WebKit UserAgentMetadata)
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+                String chromeVer = "131";
+                String chromeFullVer = "131.0.0.0";
+                int ci = chromeUA.indexOf("Chrome/");
+                if (ci >= 0) {
+                    String after = chromeUA.substring(ci + 7);
+                    int sp = after.indexOf(' ');
+                    if (sp > 0) {
+                        chromeFullVer = after.substring(0, sp);
+                        int dot = chromeFullVer.indexOf('.');
+                        if (dot > 0) chromeVer = chromeFullVer.substring(0, dot);
+                    }
+                }
+                UserAgentMetadata uaMetadata = new UserAgentMetadata.Builder()
+                    .setBrandVersionList(Arrays.asList(
+                        new UserAgentMetadata.BrandVersion.Builder()
+                            .setBrand("Not(A:Brand").setMajorVersion("8").setFullVersion("8.0.0.0").build(),
+                        new UserAgentMetadata.BrandVersion.Builder()
+                            .setBrand("Chromium").setMajorVersion(chromeVer).setFullVersion(chromeFullVer).build(),
+                        new UserAgentMetadata.BrandVersion.Builder()
+                            .setBrand("Google Chrome").setMajorVersion(chromeVer).setFullVersion(chromeFullVer).build()
+                    ))
+                    .setMobile(true)
+                    .setPlatform("Android")
+                    .setPlatformVersion(Build.VERSION.RELEASE + ".0.0")
+                    .setModel(Build.MODEL)
+                    .setArchitecture("")
+                    .setBitness(0)
+                    .setWow64(false)
+                    .setFullVersion(chromeFullVer)
+                    .build();
+                WebSettingsCompat.setUserAgentMetadata(webView.getSettings(), uaMetadata);
+                Logger.i("★ Chrome UserAgentMetadata 설정 완료: " + chromeVer + " (" + chromeFullVer + ")");
+            } else {
+                Logger.w("UserAgentMetadata API 미지원 — sec-ch-ua 오버라이드 불가");
+            }
+
+            // X-Requested-With 헤더 제거 (WebView 탐지 핵심 차단)
+            // WebView는 자동으로 "X-Requested-With: com.zero.traffic" 헤더 추가 → 봇 탐지
+            // 열거값: 0 = NO_HEADER, 1 = APP_PACKAGE_NAME (기본값), 2 = CONSTANT_WEBVIEW
+            boolean xrwRemoved = false;
+
+            // 전략 0: setRequestedWithHeaderOriginAllowList (빈 set = XRW 제거)
+            // AndroidX WebKit 1.15.0 — feature check 우회하고 직접 호출
+            try {
+                @SuppressWarnings("deprecation")
+                boolean ignored = false; // suppress deprecation for next line
+                WebSettingsCompat.setRequestedWithHeaderOriginAllowList(
+                    webView.getSettings(), java.util.Collections.emptySet());
+                xrwRemoved = true;
+                Logger.i("★ X-Requested-With 제거 완료 (AllowList 빈 set!)");
+            } catch (Exception e) {
+                Logger.w("★ setRequestedWithHeaderOriginAllowList 실패: " + e.getMessage());
+            }
+
+            // 전략 0b: reflection으로 setRequestedWithHeaderMode 검색 (메서드명이 다를 수 있음)
+            if (!xrwRemoved) {
+                try {
+                    for (java.lang.reflect.Method m : WebSettingsCompat.class.getDeclaredMethods()) {
+                        if (m.getName().toLowerCase().contains("requestedwith") &&
+                            m.getName().toLowerCase().contains("mode")) {
+                            Class<?>[] params = m.getParameterTypes();
+                            Logger.i("★ 발견: WebSettingsCompat." + m.getName() +
+                                " params=" + java.util.Arrays.toString(params));
+                            if (params.length == 2 && params[1] == int.class) {
+                                m.setAccessible(true);
+                                m.invoke(null, webView.getSettings(), 0); // 0 = NO_HEADER
+                                xrwRemoved = true;
+                                Logger.i("★ X-Requested-With 제거 완료 (reflection " + m.getName() + ")");
+                                break;
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    Logger.w("★ reflection setRequestedWithHeaderMode 실패: " + e.getMessage());
+                }
+            }
+
+            // 전략 3: AwSettings reflection — 난독화된 메서드 탐색
+            if (!xrwRemoved) {
+                try {
+                    android.webkit.WebSettings ws = webView.getSettings();
+                    Object awSettings = null;
+                    for (java.lang.reflect.Field f : ws.getClass().getDeclaredFields()) {
+                        f.setAccessible(true);
+                        Object inner = f.get(ws);
+                        if (inner != null && inner.getClass().getSimpleName().contains("AwSettings")) {
+                            awSettings = inner;
+                            break;
+                        }
+                    }
+
+                    if (awSettings != null) {
+                        // 3a: 정확한 메서드명
+                        try {
+                            java.lang.reflect.Method m = awSettings.getClass()
+                                    .getMethod("setRequestedWithHeaderMode", int.class);
+                            m.invoke(awSettings, 0); // 0 = NO_HEADER
+                            xrwRemoved = true;
+                            Logger.i("★ X-Requested-With 제거 완료 (AwSettings.setRequestedWithHeaderMode)");
+                        } catch (NoSuchMethodException e1) {
+                            // 3b: 난독화 대응 — 마커 값으로 메서드↔필드 매핑 추적
+                            // 핵심: requestedWithHeaderMode 기본값 = 1 (APP_PACKAGE_NAME)
+                            //   0 = NO_HEADER, 1 = APP_PACKAGE_NAME, 2 = CONSTANT_WEBVIEW
+                            Logger.i("★ 난독화 메서드 매핑 시작 (마커 99999)");
+
+                            // 현재 Integer 필드 값 저장
+                            java.util.Map<String, Object> origValues = new java.util.LinkedHashMap<>();
+                            for (java.lang.reflect.Field f : awSettings.getClass().getDeclaredFields()) {
+                                f.setAccessible(true);
+                                try { origValues.put(f.getName(), f.get(awSettings)); } catch (Exception ignored) {}
+                            }
+
+                            // 모든 int(1개 파라미터) 메서드 → 필드 매핑 수집
+                            java.util.Map<String, String> methodToField = new java.util.LinkedHashMap<>();
+                            java.util.Map<String, Integer> methodOrigVal = new java.util.LinkedHashMap<>();
+                            for (java.lang.reflect.Method mt : awSettings.getClass().getDeclaredMethods()) {
+                                Class<?>[] params = mt.getParameterTypes();
+                                if (params.length != 1 || params[0] != int.class) continue;
+                                mt.setAccessible(true);
+                                try {
+                                    mt.invoke(awSettings, 99999);
+                                    for (java.lang.reflect.Field f : awSettings.getClass().getDeclaredFields()) {
+                                        f.setAccessible(true);
+                                        Object val = f.get(awSettings);
+                                        if (val instanceof Integer && (Integer) val == 99999) {
+                                            Object origVal = origValues.get(f.getName());
+                                            int ov = (origVal instanceof Integer) ? (Integer) origVal : -999;
+                                            methodToField.put(mt.getName(), f.getName());
+                                            methodOrigVal.put(mt.getName(), ov);
+                                            Logger.i("★ 매핑: " + mt.getName() + " → " + f.getName() + " (기본값=" + ov + ")");
+                                            f.set(awSettings, origVal); // 복원
+                                            break;
+                                        }
+                                    }
+                                } catch (Exception ex) {
+                                    Logger.w("매핑 실패: " + mt.getName() + " → " + ex.getMessage());
+                                }
+                            }
+
+                            // ★ 핵심: 기본값=1 메서드 찾기 → requestedWithHeaderMode 후보
+                            // (기본값 1 = APP_PACKAGE_NAME → 0 = NO_HEADER 로 변경)
+                            java.util.List<String> oneMethods = new java.util.ArrayList<>();
+                            for (java.util.Map.Entry<String, Integer> entry : methodOrigVal.entrySet()) {
+                                if (entry.getValue() == 1) {
+                                    oneMethods.add(entry.getKey());
+                                }
+                            }
+
+                            Logger.i("★ 기본값=1 메서드 (XRW 후보): " + oneMethods);
+                            for (String methodName : oneMethods) {
+                                try {
+                                    java.lang.reflect.Method target = awSettings.getClass()
+                                            .getDeclaredMethod(methodName, int.class);
+                                    target.setAccessible(true);
+                                    target.invoke(awSettings, 0); // 0 = NO_HEADER
+                                    Logger.i("★ " + methodName + "(0) → NO_HEADER 설정 완료");
+                                } catch (Exception ex) {
+                                    Logger.w("메서드 호출 실패: " + methodName + " → " + ex.getMessage());
+                                }
+                            }
+                            if (!oneMethods.isEmpty()) {
+                                xrwRemoved = true;
+                                Logger.i("★ X-Requested-With 제거 완료 (기본값=1 메서드에 0 설정)");
+                            }
+
+                            // 안전장치: 알려진 세팅 명시적 복원
+                            webView.getSettings().setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
+                            webView.getSettings().setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+
+                            // 3c: Context.getPackageName() 오버라이드
+                            // C++에서 JNI로 Java의 mContext.getPackageName() 호출 → 빈값 반환
+                            if (!xrwRemoved) {
+                                try {
+                                    for (java.lang.reflect.Field f : awSettings.getClass().getDeclaredFields()) {
+                                        f.setAccessible(true);
+                                        Object val = f.get(awSettings);
+                                        if (val instanceof android.content.Context) {
+                                            android.content.ContextWrapper fakeCtx =
+                                                new android.content.ContextWrapper((android.content.Context) val) {
+                                                    @Override public String getPackageName() { return ""; }
+                                                };
+                                            f.set(awSettings, fakeCtx);
+                                            xrwRemoved = true;
+                                            Logger.i("★ X-Requested-With 제거: Context→빈 packageName (" + f.getName() + ")");
+                                            break;
+                                        }
+                                    }
+                                } catch (Exception ctxEx) {
+                                    Logger.w("Context 교체 실패: " + ctxEx.getMessage());
+                                }
+                            }
+
+                            // 3d: package name 문자열 필드 검색 (최후 fallback)
+                            if (!xrwRemoved) {
+                                for (java.lang.reflect.Field f : awSettings.getClass().getDeclaredFields()) {
+                                    try {
+                                        f.setAccessible(true);
+                                        Object val = f.get(awSettings);
+                                        if (val instanceof String && "com.zero.traffic".equals(val)) {
+                                            f.set(awSettings, "");
+                                            xrwRemoved = true;
+                                            Logger.i("★ X-Requested-With 제거: field→빈값 (" + f.getName() + ")");
+                                            break;
+                                        }
+                                    } catch (Exception ignored) {}
+                                }
+                            }
+                        }
+                    }
+
+                    if (!xrwRemoved) {
+                        Logger.w("X-Requested-With 제거 불가 — 모든 전략 실패");
+                    }
+                } catch (Exception reflectEx) {
+                    Logger.w("X-Requested-With reflection 실패: " + reflectEx.getMessage());
+                }
+            }
+
+            // 네비게이션 타이밍 기록
+            if (fingerprintCollector != null) {
+                fingerprintCollector.recordNavigationStart();
+            }
+
             webView.setWebViewClient(new WebViewClient() {
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                    String url = request.getUrl() != null ? request.getUrl().toString() : "";
+                    // 상품페이지 리디렉션 차단 — Chrome Intent가 처리
+                    if (url.contains("msearch.shopping.naver.com")
+                            || url.contains("smartstore.naver.com")
+                            || url.contains("brand.naver.com")) {
+                        Logger.i("★ 상품페이지 리디렉션 차단 (Chrome 처리): " + url.substring(0, Math.min(80, url.length())));
+                        return true; // WebView 로딩 차단
+                    }
                     return false;
+                }
+
+                @Override
+                public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                    if (request == null) return null;
+                    String reqUrl = request.getUrl() != null ? request.getUrl().toString() : "";
+
+                    // 쇼핑 도메인 분기: 상품페이지는 Chrome Intent가 처리 → WebView는 빈 페이지 반환
+                    if (request.isForMainFrame() && isShoppingDomain(reqUrl)) {
+                        if (reqUrl.contains("msearch.shopping.naver.com")
+                                || reqUrl.contains("smartstore.naver.com")
+                                || reqUrl.contains("brand.naver.com")) {
+                            // Chrome이 상품페이지 처리 → WebView는 빈 페이지 (490/418 방지)
+                            Logger.i("★ 상품페이지 → Chrome 처리중, WebView 빈 페이지: " + reqUrl.substring(0, Math.min(80, reqUrl.length())));
+                            return new WebResourceResponse("text/html", "UTF-8",
+                                new java.io.ByteArrayInputStream("<html><body></body></html>".getBytes()));
+                        } else {
+                            // bridge (cr3.shopping) 등은 네이티브 통과 (트래킹 클릭)
+                            Logger.i("★ 쇼핑 bridge → 네이티브 WebView: " + reqUrl.substring(0, Math.min(80, reqUrl.length())));
+                        }
+                    }
+
+                    // 네이버 메인프레임 요청 헤더 로깅 (디버그)
+                    if (request.isForMainFrame() && reqUrl.contains("naver.com")) {
+                        Map<String, String> reqHeaders = request.getRequestHeaders();
+                        Logger.i("══════ REQUEST HEADERS ══════");
+                        Logger.i("URL: " + reqUrl);
+                        if (reqHeaders != null) {
+                            for (Map.Entry<String, String> entry : reqHeaders.entrySet()) {
+                                Logger.i("  " + entry.getKey() + ": " + entry.getValue());
+                            }
+                        }
+                        Logger.i("══════ END HEADERS ══════");
+                    }
+                    return null;
                 }
 
                 @Override
@@ -193,8 +526,40 @@ public class ActionExecutor {
 
                 @Override
                 public void onPageFinished(WebView view, String loadedUrl) {
+                    // 네비게이션 완료 기록 + 성공 응답 기록
+                    if (fingerprintCollector != null) {
+                        fingerprintCollector.recordNavigationEnd();
+                        fingerprintCollector.recordHttpSuccess();
+                    }
+
+
                     if (!future.isDone()) {
                         future.complete(null);
+                    }
+                }
+
+                @Override
+                public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                        WebResourceResponse errorResponse) {
+                    if (request != null && request.isForMainFrame()) {
+                        int statusCode = errorResponse.getStatusCode();
+                        Map<String, String> respHeaders = errorResponse.getResponseHeaders();
+                        String reqUrl = request.getUrl() != null ? request.getUrl().toString() : "";
+                        Logger.w("HTTP error: " + statusCode + " URL: " + reqUrl);
+
+                        // 차단 시 응답 헤더도 출력
+                        if (respHeaders != null) {
+                            Logger.w("══════ RESPONSE HEADERS (HTTP " + statusCode + ") ══════");
+                            for (Map.Entry<String, String> entry : respHeaders.entrySet()) {
+                                Logger.w("  " + entry.getKey() + ": " + entry.getValue());
+                            }
+                            Logger.w("══════ END RESPONSE ══════");
+                        }
+
+                        // FingerprintCollector에 기록
+                        if (fingerprintCollector != null) {
+                            fingerprintCollector.recordHttpResponse(statusCode, respHeaders, reqUrl);
+                        }
                     }
                 }
 
@@ -428,6 +793,14 @@ public class ActionExecutor {
         Logger.i("checkStatus result: " + status);
 
         if ("blocked".equals(status)) {
+            // 차단 시 페이지 URL + 텍스트 일부 기록 (ML 분석용)
+            if (fingerprintCollector != null) {
+                String pageUrl = evalJSSync("(function(){return window.location.href;})()", 2000);
+                String pageText = evalJSSync(
+                        "(function(){return (document.body?document.body.innerText:'').substring(0,300);})()", 2000);
+                fingerprintCollector.recordBlockedPage(pageUrl, pageText);
+            }
+
             String onBlocked = step.getString("onBlocked", "");
             if ("abort".equals(onBlocked)) return StepResult.abort("Page blocked");
             return StepResult.blocked();
@@ -786,7 +1159,7 @@ public class ActionExecutor {
         return StepResult.fail("findMid: MID not found after " + maxPages + " pages + fallback");
     }
 
-    /** MID 발견 시 상세페이지 직접 이동 (bridge 418 회피) */
+    /** MID 발견 시 Chrome으로 상세페이지 열기 (WebView 418 우회) */
     private StepResult handleMidFound(String findResult, String clickMidJS, int page) {
         try {
             JSONObject info = new JSONObject(findResult);
@@ -812,26 +1185,54 @@ public class ActionExecutor {
             RandomDelay.sleepBetween(500, 1000);
             evalJSSync(clickMidJS, 5000);
 
-            // bridge 대기 없이 즉시 상품 상세페이지로 직접 이동
-            RandomDelay.sleepBetween(500, 1000);
+            // 트래킹 클릭 후 WebView 로딩 중지 (bridge 리디렉션 490 방지)
+            Thread.sleep(800);
+            mainHandler.post(() -> webView.stopLoading());
+
+            // ── Chrome으로 상품페이지 열기 (WebView 418 완전 우회) ──
+            // Chrome은 X-Requested-With 없음 + 네이티브 TLS = nfront 통과
             String directUrl = "https://msearch.shopping.naver.com/product/" + mid;
-            Logger.i("findMid: 상품페이지 직접 이동 → " + directUrl);
-            evalJSSync("window.location.href='" + directUrl + "'", 5000);
-            RandomDelay.sleepBetween(4000, 6000);
+            Logger.i("findMid: ★ Chrome으로 상품페이지 열기 → " + directUrl);
 
-            String afterUrl = evalJSSync("(function(){return window.location.href;})()", 3000);
-            if (afterUrl == null) afterUrl = "";
-            Logger.i("findMid: 이동 후 URL: " + afterUrl);
-
-            if (afterUrl.contains("smartstore.naver.com") || afterUrl.contains("brand.naver.com")
-                    || afterUrl.contains("shopping.naver.com/product")) {
-                Logger.i("findMid: ★ 상세페이지 진입 성공 ★");
-                injectStealthScript();
-                return StepResult.success();
+            try {
+                android.content.Context ctx = webView.getContext();
+                android.content.Intent chromeIntent = new android.content.Intent(
+                    android.content.Intent.ACTION_VIEW, Uri.parse(directUrl));
+                // Chrome 패키지 우선, 없으면 기본 브라우저
+                chromeIntent.setPackage("com.android.chrome");
+                chromeIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                try {
+                    ctx.startActivity(chromeIntent);
+                    Logger.i("findMid: Chrome 실행 성공");
+                } catch (android.content.ActivityNotFoundException e) {
+                    // Chrome 없으면 기본 브라우저
+                    chromeIntent.setPackage(null);
+                    ctx.startActivity(chromeIntent);
+                    Logger.i("findMid: 기본 브라우저 실행");
+                }
+            } catch (Exception e) {
+                Logger.e("findMid: 브라우저 실행 실패: " + e.getMessage());
+                return StepResult.fail("findMid: 브라우저 실행 실패");
             }
 
-            Logger.e("findMid: 상세페이지 진입 실패 — 최종 URL: " + afterUrl);
-            return StepResult.fail("findMid: 상세페이지 진입 실패");
+            // Chrome에서 체류 (4-8초)
+            RandomDelay.sleepBetween(4000, 8000);
+            Logger.i("findMid: ★ Chrome 체류 완료 — 상세페이지 진입 성공 ★");
+
+            // 앱으로 복귀 (WebView는 그대로 유지)
+            try {
+                android.content.Context ctx = webView.getContext();
+                android.content.Intent returnIntent = new android.content.Intent(ctx,
+                    Class.forName("com.zero.traffic.MainActivity"));
+                returnIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                    | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                ctx.startActivity(returnIntent);
+                Logger.i("findMid: 앱 복귀 완료");
+            } catch (Exception e) {
+                Logger.w("findMid: 앱 복귀 실패 (무시): " + e.getMessage());
+            }
+
+            return StepResult.success();
 
         } catch (Exception e) {
             Logger.w("findMid: parse error: " + e.getMessage());
@@ -877,10 +1278,20 @@ public class ActionExecutor {
         }
     }
 
+    /** FingerprintCollector 접근자 (ScenarioRunner에서 사용) */
+    public FingerprintCollector getFingerprintCollector() {
+        return fingerprintCollector;
+    }
+
     /**
      * MotionEvent 터치 시뮬레이션 (메인 스레드에서 실행)
      */
     private void simulateTouch(float x, float y) {
+        // 터치 이벤트 기록 (ML 분석용)
+        if (fingerprintCollector != null) {
+            fingerprintCollector.recordTouchEvent();
+        }
+
         mainHandler.post(() -> {
             long now = SystemClock.uptimeMillis();
 

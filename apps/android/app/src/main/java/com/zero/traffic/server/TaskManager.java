@@ -74,20 +74,80 @@ public class TaskManager {
     }
 
     /**
+     * 작업 실패 보고 + fingerprint 데이터 첨부
+     */
+    public void fail(int trafficId, int slotId, String errorMessage, JSONObject fingerprint) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("traffic_id", trafficId);
+            body.put("slot_id", slotId);
+            body.put("device_id", deviceId);
+            body.put("error_message", errorMessage);
+            if (fingerprint != null) {
+                body.put("metadata", fingerprint);
+            }
+
+            api.postJSON("/traffic/fail", body);
+            Logger.w("작업 실패 보고(+fp): #" + trafficId + " (slot=" + slotId + ") → " + errorMessage);
+
+        } catch (Exception e) {
+            Logger.e("실패 보고 실패: " + e.getMessage());
+        }
+    }
+
+    /**
      * 액션 로그 전송
      */
     public void logAction(int trafficId, String action, String message) {
+        logAction(trafficId, action, message, null);
+    }
+
+    /**
+     * 액션 로그 전송 (metadata 포함)
+     */
+    public void logAction(int trafficId, String action, String message, JSONObject metadata) {
         try {
             JSONObject body = new JSONObject();
             body.put("traffic_id", trafficId);
             body.put("device_id", deviceId);
             body.put("action", action);
             body.put("message", message);
+            if (metadata != null) {
+                body.put("metadata", metadata);
+            }
 
             api.postJSON("/traffic/log", body);
 
         } catch (Exception e) {
             // 로그 실패는 무시
+        }
+    }
+
+    /**
+     * Fingerprint 데이터 서버에 전송 (analytics 수집용)
+     */
+    public void reportFingerprint(int trafficId, JSONObject fingerprint) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("device_id", deviceId);
+            body.put("traffic_id", trafficId);
+
+            // fingerprint에서 주요 필드 추출
+            if (fingerprint != null) {
+                body.put("device_model", fingerprint.optString("device_model", ""));
+                body.put("android_version", fingerprint.optString("android_version", ""));
+                body.put("chrome_version", fingerprint.optString("chrome_version", ""));
+                body.put("webview_version", fingerprint.optString("webview_version", ""));
+                body.put("user_agent", fingerprint.optString("user_agent", ""));
+                body.put("http_status_code", fingerprint.optInt("http_status_code", 0));
+                body.put("features", fingerprint);
+            }
+
+            api.postJSON("/analytics/collect", body);
+
+        } catch (Exception e) {
+            // fingerprint 전송 실패는 무시 (메인 플로우 방해 안 함)
+            Logger.w("fingerprint 전송 실패: " + e.getMessage());
         }
     }
 }
