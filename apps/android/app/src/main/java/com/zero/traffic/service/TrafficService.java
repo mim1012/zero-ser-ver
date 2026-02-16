@@ -317,10 +317,13 @@ public class TrafficService extends Service {
                     fingerprintCollector.reset();
                 }
                 resetWebView();
-                // 6. IP 변경 (루팅폰 — su로 데이터 토글)
-                Logger.i("SCENARIO_DONE — IP 로테이션 시작");
-                updateNotification("IP 변경 중...");
-                rotateIP();
+                // 6. IP 변경 (유심 장착 후 활성화)
+                // rotateIP();
+                Logger.i("SCENARIO_DONE — IP 로테이션 스킵 (유심 없음)");
+
+                // 다음 시나리오까지 짧은 대기
+                updateNotification("다음 작업 대기...");
+                RandomDelay.sleepBetween(5000, 8000);
 
             } catch (Exception e) {
                 Logger.e("루프 오류: " + e.getMessage());
@@ -364,8 +367,9 @@ public class TrafficService extends Service {
     }
 
     /**
-     * 모바일 데이터 토글로 IP 변경 (루팅폰 전용 — su 사용)
-     * 전략: su -c "svc data disable" → 20초 대기 → su -c "svc data enable" → 10초 복구
+     * 비행기 모드 토글로 IP 변경 (루팅폰 전용 — su 사용)
+     * 전략: 비행기 ON → 5초 → 비행기 OFF → 15초 복구
+     * 비행기 모드는 모든 라디오를 끊으므로 IP 변경 확률이 높음
      * 최대 2회 재시도
      */
     private void rotateIP() {
@@ -373,23 +377,23 @@ public class TrafficService extends Service {
         Logger.i("══ IP 변경 시작 — 현재 IP: " + (oldIP != null ? oldIP : "조회실패") + " ══");
 
         for (int attempt = 1; attempt <= 2; attempt++) {
-            Logger.i("[IP변경] 시도 " + attempt + "/2 — 데이터 OFF 20초");
+            Logger.i("[IP변경] 시도 " + attempt + "/2 — 비행기 모드");
             try {
-                // 1. 데이터 OFF (su로 root 권한 실행)
-                Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", "svc data disable"});
-                p.waitFor();
-                Logger.i("[IP변경] svc data disable 완료 (su)");
+                // 1. 비행기 모드 ON (su로 settings + broadcast)
+                exec("su -c 'settings put global airplane_mode_on 1'");
+                exec("su -c 'am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true'");
+                Logger.i("[IP변경] 비행기 모드 ON");
 
-                // 2. 20초 대기 (캐리어 IPv6 세션 해제)
-                RandomDelay.sleepBetween(20000, 22000);
+                // 2. 5초 대기 (모든 라디오 해제)
+                RandomDelay.sleepBetween(5000, 7000);
 
-                // 3. 데이터 ON
-                Process p2 = Runtime.getRuntime().exec(new String[]{"su", "-c", "svc data enable"});
-                p2.waitFor();
-                Logger.i("[IP변경] svc data enable 완료 (su) — 네트워크 복구 대기 10초");
+                // 3. 비행기 모드 OFF
+                exec("su -c 'settings put global airplane_mode_on 0'");
+                exec("su -c 'am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false'");
+                Logger.i("[IP변경] 비행기 모드 OFF — 네트워크 복구 대기 15초");
 
                 // 4. 네트워크 복구 대기
-                RandomDelay.sleepBetween(10000, 12000);
+                RandomDelay.sleepBetween(15000, 18000);
 
                 // 5. IP 변경 확인 (최대 10초)
                 for (int i = 0; i < 5; i++) {
@@ -406,14 +410,21 @@ public class TrafficService extends Service {
                 Logger.w("[IP변경] 시도 " + attempt + " 실패 — 재시도");
             } catch (Exception e) {
                 Logger.e("[IP변경] 오류: " + e.getMessage());
-                // 안전장치: 데이터 ON 보장
+                // 안전장치: 비행기 모드 OFF 보장
                 try {
-                    Runtime.getRuntime().exec(new String[]{"su", "-c", "svc data enable"}).waitFor();
+                    exec("su -c 'settings put global airplane_mode_on 0'");
+                    exec("su -c 'am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false'");
                 } catch (Exception ignored) {}
             }
         }
 
         Logger.w("══ IP 미변경 — 같은 IP로 계속 진행 ══");
+    }
+
+    /** su 명령 실행 헬퍼 */
+    private void exec(String cmd) throws Exception {
+        Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
+        p.waitFor();
     }
 
     // ── WebView 초기화 (쿠키/캐시 클리어) ──────────────
