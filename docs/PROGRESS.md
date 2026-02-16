@@ -1,5 +1,66 @@
 # Zero Project Progress
 
+## 2026-02-16 (세션 6 — S7/S10 듀얼 디바이스 + IP 로테이션)
+
+### 작업 내용
+- **S10 브랜치 (`s10`)** 생성 + 커밋 + 푸시
+  - PC-side ADB IP 로테이션 (`scripts/ip_rotate.ps1`) — logcat SCENARIO_DONE 감지 → svc data 토글
+  - 20s OFF + 10s 복구로 IPv6 변경 확인
+  - 앱 내 IP 변경 불가 확인 (비루팅 UID 권한 부족)
+- **S7 브랜치 (`s7`)** 생성 + 커밋 + 푸시
+  - 루팅폰 전용 비행기 모드 IP 로테이션 (`su -c` settings + broadcast)
+  - Chrome 131 WebView 정상 동작 확인 (ncpt 챌린지 통과)
+  - WiFi 전용 모드 (유심 미장착 → IP 로테이션 스킵)
+- **WebView 버전 호환성 확인**
+  - S10: WebView 145 (`com.google.android.webview` data 파티션)
+  - S7: WebView = Chrome 131 (`com.android.chrome`이 WebView 제공자)
+  - WebView 145는 SDK 29+ 전용 → Android 8 (SDK 26) S7에 설치 불가
+  - Chrome 131도 sec-ch-ua, UserAgentMetadata API 모두 지원 (110+)
+
+### 결과
+- **S10**: ncpt 통과 ✓, IP 로테이션 ✓ (PC 스크립트), 자동 루프 ✓
+- **S7**: ncpt 통과 ✓, 시나리오 연속 실행 ✓, IP 로테이션은 유심 필요
+- 두 디바이스 모두 동일 시나리오 성공 (findMid → bridge → ncpt 챌린지 → 상품페이지 체류 → 보고)
+
+### 디바이스별 차이
+
+| | S10 (`s10`) | S7 (`s7`) |
+|---|---|---|
+| Android | 12 (SDK 31) | 8.0 (SDK 26) |
+| WebView | 145 | 131 (Chrome 제공) |
+| 루팅 | X | O |
+| IP 로테이션 | PC ADB 스크립트 | su 비행기 모드 (유심 필요) |
+| 시리얼 | R3CN107JB5L | ce0216024894820a04 |
+| 모델 | SM-G977N | SM-G930S |
+
+### IP 로테이션 시행착오 (S10 비루팅)
+- `TelephonyManager.setDataEnabled()` → 예외 없지만 실제 라디오 토글 안됨 (UID 권한)
+- `svc data disable/enable` (앱 내) → 실행되지만 IP 미변경 (UID 10XXX vs shell 2000)
+- `cmd connectivity airplane-mode` → 설정값만 변경, 라디오 토글 안됨
+- `Settings.Global.putInt(airplane_mode_on)` → DB 값만 변경
+- **해결**: PC-side ADB `svc data disable` (shell UID 2000) → 20초 OFF → IP 변경 확인
+
+### IP 로테이션 시행착오 (S7 루팅)
+- `su -c "svc data disable/enable"` → 실행 성공하지만 **S7이 WiFi 연결** → 모바일 데이터 토글은 WiFi IP에 영향 없음
+- **해결**: 유심 장착 후 WiFi OFF + 모바일 데이터로 전환 필요
+
+### 다음 단계
+1. S7 유심 장착 → 비행기 모드 IP 로테이션 테스트
+2. S10 PC 스크립트 상시 실행 환경 구성
+3. Railway 서버 push (analytics 엔드포인트)
+4. 추가 디바이스 투입 준비
+
+### 배운 것 / 참고
+- 비루팅 Android에서 앱 내 IP 변경은 사실상 불가 (ADB shell UID 필요)
+- WebView 145는 SDK 29+ 전용 — Android 8 이하에서 설치 불가
+- WebView 제공자 확인: `settings get global webview_provider`
+- Chrome과 WebView는 별도 패키지 (Chrome=브라우저, WebView=앱 내 렌더링)
+- S10 시스템 Chrome은 구버전(102), WebView는 data 파티션에 145로 업데이트됨
+- logcat 태그 필터 `-s ZeroTraffic:I` 필수 (다른 앱 로그가 버퍼 넘침)
+- PS 스크립트: `logcat -c` 대신 timestamp 비교 방식 (클리어는 디버깅 방해)
+
+---
+
 ## 2026-02-16 (세션 5 — WebView 직접 상품페이지 진입 성공)
 
 ### 작업 내용
