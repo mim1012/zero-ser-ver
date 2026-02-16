@@ -52,7 +52,7 @@ public class TrafficService extends Service {
     private static final String CHANNEL_ID = "zero_traffic";
     private static final int NOTIFICATION_ID = 1;
     private static final String EXTRA_SERVER_URL = "server_url";
-    private static final String ACTION_TOGGLE_WEBVIEW = "com.zero.traffic.TOGGLE_WEBVIEW";
+    private static final String ACTION_TOGGLE_WEBVIEW = "kr.co.mobilelife.app.TOGGLE_WEBVIEW";
 
     private ExecutorService worker;
     private volatile boolean running = false;
@@ -317,12 +317,13 @@ public class TrafficService extends Service {
                     fingerprintCollector.reset();
                 }
                 resetWebView();
-                // TODO: IP 변경은 루트 또는 WRITE_SECURE_SETTINGS 권한 필요 — 현재 스킵
-                // rotateIP();
+                // IP 변경은 PC-side ADB 스크립트(scripts/ip_rotate.ps1)에서 처리
+                // (앱 내 svc/TelephonyManager는 UID 권한 부족으로 실제 데이터 토글 불가)
+                Logger.i("SCENARIO_DONE — IP 변경은 PC 스크립트에서 처리");
 
-                // 6. 새 세션 준비
-                updateNotification("대기 중...");
-                RandomDelay.sleepBetween(3000, 5000);
+                // 6. 새 세션 준비 — PC 스크립트 IP 변경 대기 (20s OFF + 10s 복구 + 버퍼)
+                updateNotification("IP 변경 대기...");
+                RandomDelay.sleepBetween(38000, 42000);
 
             } catch (Exception e) {
                 Logger.e("루프 오류: " + e.getMessage());
@@ -342,104 +343,100 @@ public class TrafficService extends Service {
      * @return IP 문자열 or null
      */
     private String getPublicIP() {
-        try {
-            okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
-                    .connectTimeout(5, TimeUnit.SECONDS)
-                    .readTimeout(5, TimeUnit.SECONDS)
-                    .build();
-            okhttp3.Request req = new okhttp3.Request.Builder()
-                    .url("https://api.ipify.org")
-                    .build();
-            try (okhttp3.Response resp = client.newCall(req).execute()) {
-                if (resp.isSuccessful() && resp.body() != null) {
-                    return resp.body().string().trim();
+        // IPv6 우선 (api64), 실패 시 IPv4 (api) — Naver는 IPv6로 접근하므로 IPv6 변경이 핵심
+        String[] urls = {"https://api64.ipify.org", "https://api.ipify.org"};
+        for (String url : urls) {
+            try {
+                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
+                        .connectTimeout(5, TimeUnit.SECONDS)
+                        .readTimeout(5, TimeUnit.SECONDS)
+                        .build();
+                okhttp3.Request req = new okhttp3.Request.Builder()
+                        .url(url)
+                        .build();
+                try (okhttp3.Response resp = client.newCall(req).execute()) {
+                    if (resp.isSuccessful() && resp.body() != null) {
+                        return resp.body().string().trim();
+                    }
                 }
+            } catch (Exception e) {
+                Logger.w("IP 조회 실패 (" + url + "): " + e.getMessage());
             }
-        } catch (Exception e) {
-            Logger.w("공인 IP 조회 실패: " + e.getMessage());
         }
         return null;
     }
 
     /**
      * 모바일 데이터 토글로 IP 변경 (비행기 모드보다 빠르고 안정적)
-     * WRITE_SECURE_SETTINGS 권한 필요 (ADB: pm grant com.zero.traffic android.permission.WRITE_SECURE_SETTINGS)
+     * WRITE_SECURE_SETTINGS 권한 필요 (ADB: pm grant kr.co.mobilelife.app android.permission.WRITE_SECURE_SETTINGS)
      * 최대 3회 재시도
      */
     private void rotateIP() {
         String oldIP = getPublicIP();
-        Logger.i("══ IP 변경 시작 (데이터 토글) — 현재 IP: " + (oldIP != null ? oldIP : "조회실패") + " ══");
+        Logger.i("══ IP 변경 시작 — 현재 IP: " + (oldIP != null ? oldIP : "조회실패") + " ══");
 
-        for (int attempt = 1; attempt <= 3; attempt++) {
-            Logger.i("[시도 " + attempt + "/3] 모바일 데이터 토글");
-
+        // ── 전략: svc data disable → 30초 대기 → svc data enable ──
+        // (ADB 테스트로 30초 OFF 시 캐리어가 IPv6 세션 해제 확인됨)
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            Logger.i("[IP변경] 시도 " + attempt + "/2 — 데이터 OFF 30초");
             try {
-                // 1. 모바일 데이터 OFF
-                Logger.i("[data] OFF");
-                Settings.Global.putInt(getContentResolver(), "mobile_data", 0);
-                // TelephonyManager를 통한 실제 데이터 연결 해제
+                // 1. 데이터 OFF (TelephonyManager 우선, svc 폴백)
+                boolean dataOff = false;
                 try {
                     android.telephony.TelephonyManager tm =
                         (android.telephony.TelephonyManager) getSystemService(TELEPHONY_SERVICE);
                     java.lang.reflect.Method setDataEnabled =
                         tm.getClass().getDeclaredMethod("setDataEnabled", boolean.class);
                     setDataEnabled.invoke(tm, false);
-                    Logger.i("[data] TelephonyManager OFF 성공");
+                    dataOff = true;
+                    Logger.i("[IP변경] TelephonyManager OFF 성공");
                 } catch (Exception e) {
-                    Logger.w("[data] TelephonyManager OFF 실패, svc 폴백: " + e.getMessage());
-                    try {
-                        Runtime.getRuntime().exec(new String[]{"sh", "-c", "svc data disable"}).waitFor();
-                    } catch (Exception ignored) {}
+                    Logger.w("[IP변경] TelephonyManager OFF 실패: " + e.getMessage());
                 }
+                Runtime.getRuntime().exec(new String[]{"sh", "-c", "svc data disable"}).waitFor();
+                Logger.i("[IP변경] svc data disable 완료");
 
-                // 2. 3초 대기 (비행기모드 5초보다 빠름)
-                RandomDelay.sleepBetween(3000, 3000);
-                Logger.i("[data] OFF 완료 — 3초 대기 후 ON");
+                // 2. 30초 대기 (캐리어 IP 세션 해제)
+                RandomDelay.sleepBetween(30000, 33000);
 
-            } catch (Exception e) {
-                Logger.w("[data] OFF 실패: " + e.getMessage());
-            } finally {
-                // 3. 무조건 데이터 ON
+                // 3. 데이터 ON
+                Runtime.getRuntime().exec(new String[]{"sh", "-c", "svc data enable"}).waitFor();
                 try {
-                    Logger.i("[data] ON");
-                    Settings.Global.putInt(getContentResolver(), "mobile_data", 1);
-                    try {
-                        android.telephony.TelephonyManager tm =
-                            (android.telephony.TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-                        java.lang.reflect.Method setDataEnabled =
-                            tm.getClass().getDeclaredMethod("setDataEnabled", boolean.class);
-                        setDataEnabled.invoke(tm, true);
-                        Logger.i("[data] TelephonyManager ON 성공");
-                    } catch (Exception e) {
-                        Logger.w("[data] TelephonyManager ON 실패, svc 폴백: " + e.getMessage());
-                        try {
-                            Runtime.getRuntime().exec(new String[]{"sh", "-c", "svc data enable"}).waitFor();
-                        } catch (Exception ignored) {}
-                    }
-                    Logger.i("[data] ON 완료");
-                } catch (Exception e2) {
-                    Logger.e("[data] ON 실패: " + e2.getMessage());
-                }
-            }
+                    android.telephony.TelephonyManager tm =
+                        (android.telephony.TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+                    java.lang.reflect.Method setDataEnabled =
+                        tm.getClass().getDeclaredMethod("setDataEnabled", boolean.class);
+                    setDataEnabled.invoke(tm, true);
+                } catch (Exception ignored) {}
+                Logger.i("[IP변경] 데이터 ON — 네트워크 복구 대기 15초");
 
-            // 4. IP 변경 확인 (최대 20초 — 데이터 토글은 복구 빠름)
-            Logger.i("IP 변경 확인 대기...");
-            for (int i = 0; i < 10; i++) {
-                RandomDelay.sleepBetween(2000, 2000);
-                String newIP = getPublicIP();
-                if (newIP != null) {
-                    if (oldIP == null || !newIP.equals(oldIP)) {
-                        Logger.i("══ IP 변경 완료: " + (oldIP != null ? oldIP : "?") + " → " + newIP + " ══");
-                        return;
-                    }
-                    Logger.w("IP 미변경: " + newIP + " (이전과 동일)");
-                }
-            }
+                // 4. 네트워크 복구 대기
+                RandomDelay.sleepBetween(15000, 18000);
 
-            Logger.w("[시도 " + attempt + "] IP 변경 실패 — " + (attempt < 3 ? "재시도" : "포기"));
+                // 5. IP 변경 확인 (최대 20초)
+                Logger.i("[IP변경] IP 확인 중...");
+                for (int i = 0; i < 10; i++) {
+                    RandomDelay.sleepBetween(2000, 2000);
+                    String newIP = getPublicIP();
+                    if (newIP != null) {
+                        if (oldIP == null || !newIP.equals(oldIP)) {
+                            Logger.i("══ IP 변경 완료: " + (oldIP != null ? oldIP : "?") + " → " + newIP + " ══");
+                            return;
+                        }
+                        Logger.w("[IP변경] 미변경: " + newIP);
+                    }
+                }
+                Logger.w("[IP변경] 시도 " + attempt + " 실패");
+            } catch (Exception e) {
+                Logger.e("[IP변경] 오류: " + e.getMessage());
+                // 안전장치: 데이터 ON 보장
+                try {
+                    Runtime.getRuntime().exec(new String[]{"sh", "-c", "svc data enable"}).waitFor();
+                } catch (Exception ignored) {}
+            }
         }
 
-        Logger.e("══ IP 변경 실패 (3회 시도) — 계속 진행 ══");
+        Logger.w("══ IP 미변경 — 같은 IP로 계속 진행 ══");
     }
 
     // ── WebView 초기화 (쿠키/캐시 클리어) ──────────────

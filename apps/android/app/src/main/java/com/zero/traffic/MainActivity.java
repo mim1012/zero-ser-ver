@@ -143,9 +143,11 @@ public class MainActivity extends AppCompatActivity {
         scroll.addView(root);
         setContentView(scroll);
 
-        // 자동 시작 (URL 저장되어 있으면)
-        if (getIntent().getBooleanExtra("auto_start", false)) {
-            startService();
+        // 자동 시작 — URL 저장되어 있으면 바로 시작 (빌드→설치→테스트 루프 자동화)
+        String savedUrlCheck = prefs.getString(KEY_SERVER_URL, "");
+        if (!savedUrlCheck.isEmpty()) {
+            // 약간 딜레이 후 자동 시작 (UI 렌더링 완료 대기)
+            root.postDelayed(this::startService, 500);
         }
     }
 
