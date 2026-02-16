@@ -1351,6 +1351,7 @@ public class ActionExecutor {
             // ncpt 챌린지 = JS가 브라우저 환경 검증 → 통과 시 쿠키 설정 + 리디렉트
             Logger.i("findMid: ncpt JS 챌린지 통과 대기 (최대 15초)...");
             boolean challengePassed = false;
+            int captchaSolveCalls = 0; // 캡챠 해결 시도 제한 (nested retry bomb 방지)
 
             for (int retry = 0; retry < 5; retry++) {
                 RandomDelay.sleepBetween(2000, 3000);
@@ -1379,7 +1380,12 @@ public class ActionExecutor {
 
                 // ★ 영수증 캡챠 감지 → CaptchaProxy로 해결 시도
                 if (pageState != null && pageState.startsWith("captcha:")) {
-                    Logger.w("findMid: ★ 영수증 캡챠 감지! 해결 시도...");
+                    captchaSolveCalls++;
+                    if (captchaSolveCalls > 2) {
+                        Logger.e("findMid: 캡챠 해결 " + captchaSolveCalls + "회 초과 — 포기");
+                        break;
+                    }
+                    Logger.w("findMid: ★ 영수증 캡챠 감지! 해결 시도 (" + captchaSolveCalls + "/2)...");
                     if (captchaProxy != null) {
                         boolean solved = captchaProxy.solve(webView);
                         if (solved) {
