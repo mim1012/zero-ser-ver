@@ -37,6 +37,7 @@ public class ScenarioRunner {
         this.executor = new ActionExecutor(webView);
         this.captchaProxy = captchaProxy;
         this.scriptEngine = scriptEngine;
+        this.executor.setCaptchaProxy(captchaProxy);
     }
 
     /** FingerprintCollector + TaskManager 설정 (TrafficService에서 호출) */

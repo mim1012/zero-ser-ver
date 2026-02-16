@@ -16,6 +16,7 @@ import androidx.webkit.UserAgentMetadata;
 import androidx.webkit.WebSettingsCompat;
 import androidx.webkit.WebViewFeature;
 
+import com.zero.traffic.captcha.CaptchaProxy;
 import com.zero.traffic.model.Step;
 import com.zero.traffic.model.StepResult;
 import com.zero.traffic.util.FingerprintCollector;
@@ -62,6 +63,9 @@ public class ActionExecutor {
 
     // Fingerprint 수집기 (ML 분석용)
     private FingerprintCollector fingerprintCollector;
+
+    // CAPTCHA 프록시 (영수증 캡챠 해결)
+    private CaptchaProxy captchaProxy;
 
     // 상품페이지 HTTP 상태코드 (onReceivedHttpError → handleMidFound 연동)
     private volatile int lastProductPageStatus = 0;
@@ -124,6 +128,11 @@ public class ActionExecutor {
     /** FingerprintCollector 설정 (TrafficService에서 호출) */
     public void setFingerprintCollector(FingerprintCollector collector) {
         this.fingerprintCollector = collector;
+    }
+
+    /** CaptchaProxy 설정 (ScenarioRunner에서 호출) */
+    public void setCaptchaProxy(CaptchaProxy proxy) {
+        this.captchaProxy = proxy;
     }
 
     /** ScenarioRunner에서 호출 — 현재 작업의 키워드/MID 전달 */
@@ -1353,6 +1362,9 @@ public class ActionExecutor {
                     "var t=(document.body?document.body.innerText:'').substring(0,500);" +
                     "var s=document.title||'';" +
                     "var u=location.href;" +
+                    // ★ 캡챠 감지 (영수증 캡챠) — 상품 체크보다 먼저!
+                    "if(t.includes('보안 확인')&&(t.includes('영수증')||t.includes('무엇입니까')))return 'captcha:'+s;" +
+                    "if(t.includes('자동입력방지'))return 'captcha:'+s;" +
                     // ncpt 챌린지 통과 확인: 실제 상품 페이지 컨텐츠 존재
                     "if(t.length>50 && (t.includes('구매하기')||t.includes('장바구니')" +
                     "||t.includes('상품정보')||t.includes('리뷰')||t.includes('원')))return 'product:'+s;" +
@@ -1364,6 +1376,33 @@ public class ActionExecutor {
 
                 Logger.i("findMid: 챌린지 체크 " + (retry + 1) + "/5: " + pageState);
                 Logger.i("findMid:   URL: " + (urlCheck != null ? urlCheck.substring(0, Math.min(80, urlCheck.length())) : "null"));
+
+                // ★ 영수증 캡챠 감지 → CaptchaProxy로 해결 시도
+                if (pageState != null && pageState.startsWith("captcha:")) {
+                    Logger.w("findMid: ★ 영수증 캡챠 감지! 해결 시도...");
+                    if (captchaProxy != null) {
+                        boolean solved = captchaProxy.solve(webView);
+                        if (solved) {
+                            Logger.i("findMid: ★★ 캡챠 해결 성공! 상품페이지 확인 중... ★★");
+                            RandomDelay.sleepBetween(2000, 3000);
+                            // 캡챠 해결 후 상품페이지 로드 확인
+                            String afterCaptcha = evalJSSync(
+                                "(function(){var t=(document.body?document.body.innerText:'').substring(0,500);" +
+                                "if(t.includes('구매하기')||t.includes('장바구니')||t.includes('상품정보'))return 'product';" +
+                                "return 'other:'+t.substring(0,100);})()", 3000);
+                            if (afterCaptcha != null && afterCaptcha.startsWith("product")) {
+                                challengePassed = true;
+                                Logger.i("findMid: ★★ 캡챠 해결 → 상품페이지 로드 성공! ★★");
+                                break;
+                            }
+                        } else {
+                            Logger.e("findMid: 캡챠 해결 실패");
+                        }
+                    } else {
+                        Logger.e("findMid: captchaProxy 미설정 — 캡챠 해결 불가");
+                    }
+                    continue; // 다음 retry에서 재확인
+                }
 
                 if (pageState != null && pageState.startsWith("product:")) {
                     challengePassed = true;
