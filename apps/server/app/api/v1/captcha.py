@@ -39,6 +39,7 @@ class CaptchaSolveRequest(BaseModel):
 class CaptchaSolveResponse(BaseModel):
     answer: str
     confidence: str = "medium"
+    error: str = ""
 
 
 @router.get("/status")
@@ -78,7 +79,7 @@ async def solve_captcha(req: CaptchaSolveRequest):
             media_type = "image/jpeg"
 
         response = await _client.messages.create(
-            model="claude-haiku-4-20250514",
+            model="claude-haiku-4-5-20251001",
             max_tokens=50,
             system="You are an OCR assistant. Read Korean receipt images and answer questions. Reply with ONLY the answer (a single number or character). Never explain.",
             messages=[{
@@ -113,4 +114,4 @@ async def solve_captcha(req: CaptchaSolveRequest):
     except Exception as e:
         elapsed = time.time() - start
         logger.error(f"CAPTCHA solve error ({elapsed:.1f}s): {e}")
-        return CaptchaSolveResponse(answer="", confidence="none")
+        return CaptchaSolveResponse(answer="", confidence="none", error=str(e)[:200])
