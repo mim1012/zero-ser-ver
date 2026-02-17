@@ -227,17 +227,15 @@ public class TrafficService extends Service {
                         ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                         : WindowManager.LayoutParams.TYPE_PHONE;
 
-                // 완전 투명 오버레이 (렌더링 정상, 사용자에게 안 보임)
+                // 1x1 최소 오버레이 (렌더링 정상, 사용자에게 안 보임)
                 overlayParams = new WindowManager.LayoutParams(
-                        WindowManager.LayoutParams.MATCH_PARENT,
-                        WindowManager.LayoutParams.MATCH_PARENT,
+                        1, 1,  // 최소 크기로 숨김
                         overlayType,
                         WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                                 | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                         PixelFormat.TRANSLUCENT
                 );
                 overlayParams.gravity = Gravity.TOP | Gravity.START;
-                overlayParams.alpha = 0f;  // 완전 투명
 
                 windowManager.addView(webView, overlayParams);
                 Logger.i("WebView 오버레이 표시 완료");
@@ -311,19 +309,30 @@ public class TrafficService extends Service {
                     taskManager.fail(task.getTrafficId(), task.getSlotId(), result.getMessage(), fp);
                 }
 
-                // 5. 세션 종료 → WebView 초기화 + fingerprint 리셋
-                updateNotification("세션 종료...");
+                // 5. 세션 종료 → WebView 완전 파괴 + fingerprint 리셋
+                updateNotification("세션 종료 — 브라우저 파괴 중...");
                 if (fingerprintCollector != null) {
                     fingerprintCollector.reset();
                 }
-                resetWebView();
-                // IP 변경은 PC-side ADB 스크립트(scripts/ip_rotate.ps1)에서 처리
-                // (앱 내 svc/TelephonyManager는 UID 권한 부족으로 실제 데이터 토글 불가)
-                Logger.i("SCENARIO_DONE — IP 변경은 PC 스크립트에서 처리");
+                destroyWebView();
 
-                // 6. 새 세션 준비 — PC 스크립트 IP 변경 대기 (20s OFF + 10s 복구 + 버퍼)
-                updateNotification("IP 변경 대기...");
-                RandomDelay.sleepBetween(38000, 42000);
+                // 6. IP 변경 (데이터 off/on)
+                updateNotification("IP 변경 중...");
+                rotateIP();
+
+                // 7. 새 WebView 생성 (새 쿠키/세션)
+                updateNotification("새 브라우저 생성 중...");
+                if (!initWebView()) {
+                    Logger.e("WebView 재생성 실패 — 루프 중단");
+                    break;
+                }
+                runner = new ScenarioRunner(webView, captchaProxy, scriptEngine);
+                runner.setAnalytics(fingerprintCollector, taskManager);
+                Logger.i("새 브라우저 세션 준비 완료");
+
+                // 다음 시나리오까지 짧은 대기
+                updateNotification("다음 작업 대기...");
+                RandomDelay.sleepBetween(5000, 8000);
 
             } catch (Exception e) {
                 Logger.e("루프 오류: " + e.getMessage());
@@ -367,56 +376,34 @@ public class TrafficService extends Service {
     }
 
     /**
-     * 모바일 데이터 토글로 IP 변경 (비행기 모드보다 빠르고 안정적)
-     * WRITE_SECURE_SETTINGS 권한 필요 (ADB: pm grant kr.co.mobilelife.app android.permission.WRITE_SECURE_SETTINGS)
+     * 모바일 데이터 off/on 토글로 IP 변경 (루팅폰 전용 — su 사용)
+     * 전략: svc data disable → 3초 → svc data enable → 10초 복구
      * 최대 3회 재시도
      */
     private void rotateIP() {
         String oldIP = getPublicIP();
         Logger.i("══ IP 변경 시작 — 현재 IP: " + (oldIP != null ? oldIP : "조회실패") + " ══");
 
-        // ── 전략: svc data disable → 30초 대기 → svc data enable ──
-        // (ADB 테스트로 30초 OFF 시 캐리어가 IPv6 세션 해제 확인됨)
-        for (int attempt = 1; attempt <= 2; attempt++) {
-            Logger.i("[IP변경] 시도 " + attempt + "/2 — 데이터 OFF 30초");
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            Logger.i("[IP변경] 시도 " + attempt + "/3 — 데이터 토글");
             try {
-                // 1. 데이터 OFF (TelephonyManager 우선, svc 폴백)
-                boolean dataOff = false;
-                try {
-                    android.telephony.TelephonyManager tm =
-                        (android.telephony.TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-                    java.lang.reflect.Method setDataEnabled =
-                        tm.getClass().getDeclaredMethod("setDataEnabled", boolean.class);
-                    setDataEnabled.invoke(tm, false);
-                    dataOff = true;
-                    Logger.i("[IP변경] TelephonyManager OFF 성공");
-                } catch (Exception e) {
-                    Logger.w("[IP변경] TelephonyManager OFF 실패: " + e.getMessage());
-                }
-                Runtime.getRuntime().exec(new String[]{"sh", "-c", "svc data disable"}).waitFor();
-                Logger.i("[IP변경] svc data disable 완료");
+                // 1. 데이터 OFF
+                exec("su -c 'svc data disable'");
+                Logger.i("[IP변경] 데이터 OFF");
 
-                // 2. 30초 대기 (캐리어 IP 세션 해제)
-                RandomDelay.sleepBetween(30000, 33000);
+                // 2. 3초 대기
+                RandomDelay.sleepBetween(3000, 5000);
 
                 // 3. 데이터 ON
-                Runtime.getRuntime().exec(new String[]{"sh", "-c", "svc data enable"}).waitFor();
-                try {
-                    android.telephony.TelephonyManager tm =
-                        (android.telephony.TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-                    java.lang.reflect.Method setDataEnabled =
-                        tm.getClass().getDeclaredMethod("setDataEnabled", boolean.class);
-                    setDataEnabled.invoke(tm, true);
-                } catch (Exception ignored) {}
-                Logger.i("[IP변경] 데이터 ON — 네트워크 복구 대기 15초");
+                exec("su -c 'svc data enable'");
+                Logger.i("[IP변경] 데이터 ON — 네트워크 복구 대기");
 
                 // 4. 네트워크 복구 대기
-                RandomDelay.sleepBetween(15000, 18000);
+                RandomDelay.sleepBetween(8000, 12000);
 
-                // 5. IP 변경 확인 (최대 20초)
-                Logger.i("[IP변경] IP 확인 중...");
-                for (int i = 0; i < 10; i++) {
-                    RandomDelay.sleepBetween(2000, 2000);
+                // 5. IP 변경 확인 (최대 15초)
+                for (int i = 0; i < 5; i++) {
+                    RandomDelay.sleepBetween(2000, 3000);
                     String newIP = getPublicIP();
                     if (newIP != null) {
                         if (oldIP == null || !newIP.equals(oldIP)) {
@@ -426,12 +413,12 @@ public class TrafficService extends Service {
                         Logger.w("[IP변경] 미변경: " + newIP);
                     }
                 }
-                Logger.w("[IP변경] 시도 " + attempt + " 실패");
+                Logger.w("[IP변경] 시도 " + attempt + " 실패 — 재시도");
             } catch (Exception e) {
                 Logger.e("[IP변경] 오류: " + e.getMessage());
                 // 안전장치: 데이터 ON 보장
                 try {
-                    Runtime.getRuntime().exec(new String[]{"sh", "-c", "svc data enable"}).waitFor();
+                    exec("su -c 'svc data enable'");
                 } catch (Exception ignored) {}
             }
         }
@@ -439,72 +426,52 @@ public class TrafficService extends Service {
         Logger.w("══ IP 미변경 — 같은 IP로 계속 진행 ══");
     }
 
-    // ── WebView 초기화 (쿠키/캐시 클리어) ──────────────
+    /** su 명령 실행 헬퍼 */
+    private void exec(String cmd) throws Exception {
+        Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
+        p.waitFor();
+    }
 
-    /** Naver 쿠키 유지 대상 도메인 */
-    private static final String[] NAVER_COOKIE_DOMAINS = {
-        ".naver.com", "naver.com",
-        ".shopping.naver.com", "shopping.naver.com",
-        ".smartstore.naver.com", "smartstore.naver.com",
-        ".search.naver.com", "search.naver.com",
-        ".msearch.shopping.naver.com"
-    };
+    // ── WebView 완전 파괴 (새 세션을 위해) ──────────────
 
-    private void resetWebView() {
+    /**
+     * WebView 완전 파괴 — 쿠키/캐시/히스토리 전부 삭제 후 WebView 인스턴스 제거
+     * 다음 initWebView()에서 완전히 새로운 세션으로 시작
+     */
+    private void destroyWebView() {
         CountDownLatch latch = new CountDownLatch(1);
         mainHandler.post(() -> {
             try {
                 if (webView != null) {
                     webView.stopLoading();
+                    webView.loadUrl("about:blank");
                     webView.clearCache(true);
                     webView.clearHistory();
 
-                    // Naver 쿠키는 유지, 나머지만 삭제
-                    // (Chrome은 Naver 쿠키(NNB, NID 등) 유지 → "신뢰된 사용자" 인식)
+                    // 쿠키 전체 삭제 (새 세션이므로 Naver 쿠키도 삭제)
                     android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
-                    String[] domains = {
-                        "https://www.naver.com",
-                        "https://m.naver.com",
-                        "https://search.naver.com",
-                        "https://m.search.naver.com",
-                        "https://shopping.naver.com",
-                        "https://msearch.shopping.naver.com",
-                        "https://smartstore.naver.com",
-                        "https://cr3.shopping.naver.com"
-                    };
-
-                    // Naver 도메인 쿠키 백업
-                    java.util.Map<String, String> naverCookies = new java.util.LinkedHashMap<>();
-                    for (String domain : domains) {
-                        String cookies = cm.getCookie(domain);
-                        if (cookies != null && !cookies.isEmpty()) {
-                            naverCookies.put(domain, cookies);
-                        }
-                    }
-
-                    // 전체 쿠키 삭제
                     cm.removeAllCookies(null);
-
-                    // Naver 쿠키 복원
-                    int restored = 0;
-                    for (java.util.Map.Entry<String, String> entry : naverCookies.entrySet()) {
-                        String domain = entry.getKey();
-                        String[] cookieParts = entry.getValue().split(";");
-                        for (String cookie : cookieParts) {
-                            String trimmed = cookie.trim();
-                            if (!trimmed.isEmpty()) {
-                                cm.setCookie(domain, trimmed);
-                                restored++;
-                            }
-                        }
-                    }
                     cm.flush();
 
-                    webView.loadUrl("about:blank");
-                    Logger.i("WebView 초기화 완료 (Naver 쿠키 " + restored + "개 유지, 나머지 삭제)");
+                    // WebStorage 삭제
+                    android.webkit.WebStorage.getInstance().deleteAllData();
+
+                    // WindowManager에서 제거
+                    if (windowManager != null) {
+                        try {
+                            windowManager.removeView(webView);
+                        } catch (Exception ignored) {}
+                    }
+
+                    webView.removeAllViews();
+                    webView.destroy();
+                    webView = null;
+                    webViewVisible = false;
+                    Logger.i("WebView 완전 파괴 완료 (쿠키/캐시/세션 전부 삭제)");
                 }
             } catch (Exception e) {
-                Logger.w("WebView 초기화 실패: " + e.getMessage());
+                Logger.w("WebView 파괴 실패: " + e.getMessage());
+                webView = null;
             } finally {
                 latch.countDown();
             }
@@ -527,7 +494,13 @@ public class TrafficService extends Service {
         mainHandler.post(() -> {
             if (webView == null || windowManager == null || overlayParams == null) return;
             webViewVisible = !webViewVisible;
-            overlayParams.alpha = webViewVisible ? 1.0f : 0f;
+            if (webViewVisible) {
+                overlayParams.width = WindowManager.LayoutParams.MATCH_PARENT;
+                overlayParams.height = WindowManager.LayoutParams.MATCH_PARENT;
+            } else {
+                overlayParams.width = 1;
+                overlayParams.height = 1;
+            }
             try {
                 windowManager.updateViewLayout(webView, overlayParams);
             } catch (Exception e) {

@@ -1391,7 +1391,6 @@ public class ActionExecutor {
                         if (solved) {
                             Logger.i("findMid: ★★ 캡챠 해결 성공! 상품페이지 확인 중... ★★");
                             RandomDelay.sleepBetween(2000, 3000);
-                            // 캡챠 해결 후 상품페이지 로드 확인
                             String afterCaptcha = evalJSSync(
                                 "(function(){var t=(document.body?document.body.innerText:'').substring(0,500);" +
                                 "if(t.includes('구매하기')||t.includes('장바구니')||t.includes('상품정보'))return 'product';" +
@@ -1407,7 +1406,7 @@ public class ActionExecutor {
                     } else {
                         Logger.e("findMid: captchaProxy 미설정 — 캡챠 해결 불가");
                     }
-                    continue; // 다음 retry에서 재확인
+                    continue;
                 }
 
                 if (pageState != null && pageState.startsWith("product:")) {

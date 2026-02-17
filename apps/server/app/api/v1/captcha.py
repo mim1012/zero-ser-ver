@@ -41,6 +41,16 @@ class CaptchaSolveResponse(BaseModel):
     confidence: str = "medium"
 
 
+@router.get("/status")
+async def captcha_status():
+    """캡챠 서비스 상태 확인"""
+    return {
+        "api_key_set": bool(ANTHROPIC_API_KEY),
+        "api_key_prefix": ANTHROPIC_API_KEY[:12] + "..." if len(ANTHROPIC_API_KEY) > 12 else "(empty)",
+        "client_ready": _client is not None,
+    }
+
+
 @router.post("/solve", response_model=CaptchaSolveResponse)
 async def solve_captcha(req: CaptchaSolveRequest):
     """영수증 캡챠 해결 — Claude Vision 호출"""
