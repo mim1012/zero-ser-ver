@@ -37,16 +37,27 @@ class CaptchaSolveResponse(BaseModel):
     confidence: str
 
 
+@router.get("/status")
+async def captcha_status():
+    """캡챠 서비스 상태 확인"""
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    return {
+        "api_key_set": bool(api_key),
+        "api_key_prefix": api_key[:12] + "..." if len(api_key) > 12 else "(empty)",
+    }
+
+
 @router.post("/solve", response_model=CaptchaSolveResponse)
 async def solve_captcha(req: CaptchaSolveRequest):
     """영수증 캡챠 이미지 + 질문 → Claude Vision으로 답 추출"""
 
     if not req.image_base64 or not req.question:
+        logger.warning("CAPTCHA: 이미지 또는 질문 없음")
         return CaptchaSolveResponse(answer="", confidence="none")
 
     c = get_client()
     if c is None:
-        logger.error("Anthropic 클라이언트 초기화 실패")
+        logger.error("CAPTCHA: ANTHROPIC_API_KEY 미설정!")
         return CaptchaSolveResponse(answer="", confidence="none")
 
     try:
