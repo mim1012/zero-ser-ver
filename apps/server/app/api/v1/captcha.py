@@ -11,7 +11,7 @@ from pydantic import BaseModel, field_validator
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
 
 
 class CaptchaSolveRequest(BaseModel):
