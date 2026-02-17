@@ -227,17 +227,15 @@ public class TrafficService extends Service {
                         ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                         : WindowManager.LayoutParams.TYPE_PHONE;
 
-                // 완전 투명 오버레이 (렌더링 정상, 사용자에게 안 보임)
+                // 1x1 최소 오버레이 (렌더링 정상, 사용자에게 안 보임)
                 overlayParams = new WindowManager.LayoutParams(
-                        WindowManager.LayoutParams.MATCH_PARENT,
-                        WindowManager.LayoutParams.MATCH_PARENT,
+                        1, 1,  // 최소 크기로 숨김
                         overlayType,
                         WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                                 | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                         PixelFormat.TRANSLUCENT
                 );
                 overlayParams.gravity = Gravity.TOP | Gravity.START;
-                overlayParams.alpha = 0f;  // 완전 투명
 
                 windowManager.addView(webView, overlayParams);
                 Logger.i("WebView 오버레이 표시 완료");
@@ -468,6 +466,7 @@ public class TrafficService extends Service {
                     webView.removeAllViews();
                     webView.destroy();
                     webView = null;
+                    webViewVisible = false;
                     Logger.i("WebView 완전 파괴 완료 (쿠키/캐시/세션 전부 삭제)");
                 }
             } catch (Exception e) {
@@ -495,7 +494,13 @@ public class TrafficService extends Service {
         mainHandler.post(() -> {
             if (webView == null || windowManager == null || overlayParams == null) return;
             webViewVisible = !webViewVisible;
-            overlayParams.alpha = webViewVisible ? 1.0f : 0f;
+            if (webViewVisible) {
+                overlayParams.width = WindowManager.LayoutParams.MATCH_PARENT;
+                overlayParams.height = WindowManager.LayoutParams.MATCH_PARENT;
+            } else {
+                overlayParams.width = 1;
+                overlayParams.height = 1;
+            }
             try {
                 windowManager.updateViewLayout(webView, overlayParams);
             } catch (Exception e) {
