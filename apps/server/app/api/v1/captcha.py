@@ -4,8 +4,7 @@ CAPTCHA 해결 API — Claude Vision으로 영수증 캡챠 풀이
 import os
 import time
 import logging
-import asyncio
-from functools import partial
+import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel, field_validator
 
@@ -44,43 +43,9 @@ async def captcha_status():
     }
 
 
-def _solve_sync(image_data: str, media_type: str, question: str) -> str:
-    """동기 Claude API 호출 (스레드에서 실행)"""
-    import anthropic
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=50,
-        system="You are an OCR assistant. Read Korean receipt images and answer questions. Reply with ONLY the answer (a single number or character). Never explain.",
-        messages=[{
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": media_type,
-                        "data": image_data
-                    }
-                },
-                {
-                    "type": "text",
-                    "text": (
-                        "아래는 가상 영수증 이미지입니다.\n"
-                        "먼저 영수증의 모든 텍스트를 읽은 후,\n"
-                        f"다음 질문에 답하세요: {question}\n\n"
-                        "정답만 출력하세요 (숫자 1개 또는 글자 1개)."
-                    )
-                }
-            ]
-        }]
-    )
-    return response.content[0].text.strip()
-
-
 @router.post("/solve", response_model=CaptchaSolveResponse)
 async def solve_captcha(req: CaptchaSolveRequest):
-    """영수증 캡챠 해결 — Claude Vision 호출"""
+    """영수증 캡챠 해결 — Claude Vision 직접 HTTP 호출"""
     start = time.time()
     logger.info(f"CAPTCHA request: device={req.device_id} question={req.question[:80]}")
 
@@ -102,11 +67,51 @@ async def solve_captcha(req: CaptchaSolveRequest):
         elif image_data.startswith("/9j/"):
             media_type = "image/jpeg"
 
-        # 동기 호출을 스레드풀에서 실행
-        loop = asyncio.get_event_loop()
-        answer = await loop.run_in_executor(
-            None, partial(_solve_sync, image_data, media_type, req.question)
-        )
+        # Anthropic API 직접 호출 (httpx)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 50,
+                    "system": "You are an OCR assistant. Read Korean receipt images and answer questions. Reply with ONLY the answer (a single number or character). Never explain.",
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": image_data
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": (
+                                    "아래는 가상 영수증 이미지입니다.\n"
+                                    "먼저 영수증의 모든 텍스트를 읽은 후,\n"
+                                    f"다음 질문에 답하세요: {req.question}\n\n"
+                                    "정답만 출력하세요 (숫자 1개 또는 글자 1개)."
+                                )
+                            }
+                        ]
+                    }]
+                }
+            )
+
+        if resp.status_code != 200:
+            error_msg = resp.text[:200]
+            logger.error(f"CAPTCHA API error {resp.status_code}: {error_msg}")
+            return CaptchaSolveResponse(answer="", confidence="none", error=f"API {resp.status_code}: {error_msg}")
+
+        data = resp.json()
+        answer = data["content"][0]["text"].strip()
 
         elapsed = time.time() - start
         logger.info(f"CAPTCHA solved: Q={req.question} A={answer} device={req.device_id} time={elapsed:.1f}s")
