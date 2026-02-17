@@ -4,6 +4,8 @@ CAPTCHA 해결 API — Claude Vision으로 영수증 캡챠 풀이
 import os
 import time
 import logging
+import asyncio
+from functools import partial
 from fastapi import APIRouter
 from pydantic import BaseModel, field_validator
 
@@ -11,15 +13,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-
-# 모듈 레벨 클라이언트 (재사용)
-_client = None
-if ANTHROPIC_API_KEY:
-    try:
-        from anthropic import AsyncAnthropic
-        _client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-    except Exception:
-        pass
 
 
 class CaptchaSolveRequest(BaseModel):
@@ -48,8 +41,41 @@ async def captcha_status():
     return {
         "api_key_set": bool(ANTHROPIC_API_KEY),
         "api_key_prefix": ANTHROPIC_API_KEY[:12] + "..." if len(ANTHROPIC_API_KEY) > 12 else "(empty)",
-        "client_ready": _client is not None,
     }
+
+
+def _solve_sync(image_data: str, media_type: str, question: str) -> str:
+    """동기 Claude API 호출 (스레드에서 실행)"""
+    import anthropic
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=50,
+        system="You are an OCR assistant. Read Korean receipt images and answer questions. Reply with ONLY the answer (a single number or character). Never explain.",
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": image_data
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": (
+                        "아래는 가상 영수증 이미지입니다.\n"
+                        "먼저 영수증의 모든 텍스트를 읽은 후,\n"
+                        f"다음 질문에 답하세요: {question}\n\n"
+                        "정답만 출력하세요 (숫자 1개 또는 글자 1개)."
+                    )
+                }
+            ]
+        }]
+    )
+    return response.content[0].text.strip()
 
 
 @router.post("/solve", response_model=CaptchaSolveResponse)
@@ -58,15 +84,13 @@ async def solve_captcha(req: CaptchaSolveRequest):
     start = time.time()
     logger.info(f"CAPTCHA request: device={req.device_id} question={req.question[:80]}")
 
-    if not _client:
-        logger.warning("ANTHROPIC_API_KEY 미설정 또는 클라이언트 초기화 실패")
-        return CaptchaSolveResponse(answer="", confidence="none")
+    if not ANTHROPIC_API_KEY:
+        return CaptchaSolveResponse(answer="", confidence="none", error="ANTHROPIC_API_KEY not set")
 
     if not req.image_base64 or not req.question:
-        return CaptchaSolveResponse(answer="", confidence="none")
+        return CaptchaSolveResponse(answer="", confidence="none", error="empty image or question")
 
     try:
-        # data:image prefix 방어적 제거
         image_data = req.image_base64
         media_type = "image/png"
         if image_data.startswith("data:"):
@@ -78,35 +102,12 @@ async def solve_captcha(req: CaptchaSolveRequest):
         elif image_data.startswith("/9j/"):
             media_type = "image/jpeg"
 
-        response = await _client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=50,
-            system="You are an OCR assistant. Read Korean receipt images and answer questions. Reply with ONLY the answer (a single number or character). Never explain.",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": image_data
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": (
-                            "아래는 가상 영수증 이미지입니다.\n"
-                            "먼저 영수증의 모든 텍스트를 읽은 후,\n"
-                            f"다음 질문에 답하세요: {req.question}\n\n"
-                            "정답만 출력하세요 (숫자 1개 또는 글자 1개)."
-                        )
-                    }
-                ]
-            }]
+        # 동기 호출을 스레드풀에서 실행
+        loop = asyncio.get_event_loop()
+        answer = await loop.run_in_executor(
+            None, partial(_solve_sync, image_data, media_type, req.question)
         )
 
-        answer = response.content[0].text.strip()
         elapsed = time.time() - start
         logger.info(f"CAPTCHA solved: Q={req.question} A={answer} device={req.device_id} time={elapsed:.1f}s")
         return CaptchaSolveResponse(answer=answer, confidence="high")
