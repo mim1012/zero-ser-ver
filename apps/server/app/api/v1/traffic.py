@@ -100,14 +100,14 @@ def _pick_query_words(keyword: str, product_name: str) -> str:
 
 
 def _build_landing_target_url(keyword: str, product_name: str = '') -> str:
-    """unified-runner 동일 형식: m.search.naver.com 통합검색 URL
-    sm=mtp_sug.top, where=m, ackey 포함
-    query는 keyword 그대로 사용 (MID 상품이 검색결과에 나오도록)"""
+    """네이버 모바일 쇼핑탭 URL (where=m_shopping)
+    sm=mtp_sug.top, ackey 포함 — 자동완성 선택 시뮬레이션
+    query는 keyword 그대로 사용 (MID 상품이 쇼핑 결과에 나오도록)"""
     from urllib.parse import urlencode
     query = keyword  # keyword 그대로 사용 — MID 매칭 보장
     params = {
         'sm': 'mtp_sug.top',
-        'where': 'm',
+        'where': 'm_shopping',  # 쇼핑탭 (nv_mid 링크 포함, findMid 호환)
         'query': query,
         'ackey': _generate_ackey(),
         'acq': query,
@@ -137,9 +137,11 @@ def _get_or_create_landing_slug(prod, slot_id: int, keyword: str, product_name: 
         if existing.data:
             slug = existing.data[0]['slug']
             # 매 요청마다 query/ackey가 랜덤이므로 항상 갱신 + product_name도 동기화
+            # ★ keyword 필터 추가 — 다른 keyword의 slug를 덮어쓰는 레이스 컨디션 방지
             prod.table('landing_redirects') \
                 .update({'target_url': target_url, 'product_name': product_name or ''}) \
                 .eq('slug', slug) \
+                .eq('keyword', keyword) \
                 .execute()
             return f"https://{LANDING_DOMAIN}/r/{slug}"
 
