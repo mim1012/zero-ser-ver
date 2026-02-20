@@ -100,14 +100,14 @@ def _pick_query_words(keyword: str, product_name: str) -> str:
 
 
 def _build_landing_target_url(keyword: str, product_name: str = '') -> str:
-    """네이버 모바일 쇼핑탭 URL (where=m_shopping)
-    sm=mtp_sug.top, ackey 포함 — 자동완성 선택 시뮬레이션
-    query는 keyword 그대로 사용 (MID 상품이 쇼핑 결과에 나오도록)"""
+    """unified-runner 동일 형식: m.search.naver.com 통합검색 URL
+    sm=mtp_sug.top, where=m, ackey 포함
+    query는 keyword 그대로 사용 (MID 상품이 검색결과에 나오도록)"""
     from urllib.parse import urlencode
     query = keyword  # keyword 그대로 사용 — MID 매칭 보장
     params = {
         'sm': 'mtp_sug.top',
-        'where': 'm_shopping',  # 쇼핑탭 (nv_mid 링크 포함, findMid 호환)
+        'where': 'm',
         'query': query,
         'ackey': _generate_ackey(),
         'acq': query,
