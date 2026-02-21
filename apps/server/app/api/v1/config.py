@@ -42,6 +42,19 @@ def save_json_config(file_path: Path, data: Dict[str, Any]):
         raise
 
 
+@router.get("/config/get")
+async def get_app_config():
+    """
+    앱 동적 설정 조회 (IP 회전 주기 등)
+    Android 앱이 init() 시 호출 → 서버에서 실시간 조정 가능
+    """
+    app_config_path = CONFIG_DIR / "app_config.json"
+    config = load_json_config(app_config_path)
+    return {
+        "ip_rotate_interval": config.get("ip_rotate_interval", 10)
+    }
+
+
 @router.get("/config/headers")
 async def get_headers_config(
     profile: Optional[str] = None
