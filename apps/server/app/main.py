@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from app.api.v1 import traffic, headers, devices_supabase, dashboard, config, automation, admin, scenario, analytics, captcha
 import logging
 
@@ -51,6 +51,12 @@ async def startup_event():
         from app.analytics.learning_loop import auto_learning_loop
         asyncio.create_task(auto_learning_loop())
         logger.info("Analytics learning loop started")
+
+
+@app.get("/zero/api/v1/generate_204")
+def generate_204():
+    """Android captive portal 검사용 — 204 No Content 반환 → 네트워크 VALIDATED 마킹"""
+    return Response(status_code=204)
 
 
 @app.get("/")
