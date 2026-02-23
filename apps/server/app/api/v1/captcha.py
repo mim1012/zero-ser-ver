@@ -111,10 +111,14 @@ async def solve_captcha(req: CaptchaSolveRequest):
             return CaptchaSolveResponse(answer="", confidence="none", error=f"API {resp.status_code}: {error_msg}")
 
         data = resp.json()
-        answer = data["content"][0]["text"].strip()
+        raw = data["content"][0]["text"].strip()
+        # 첫 줄만 추출 — 모델이 설명문을 붙일 경우 답만 남김
+        answer = raw.split("\n")[0].strip()
+        # 앞뒤 따옴표/괄호 제거
+        answer = answer.strip("\"'「」『』()")
 
         elapsed = time.time() - start
-        logger.info(f"CAPTCHA solved: Q={req.question} A={answer} device={req.device_id} time={elapsed:.1f}s")
+        logger.info(f"CAPTCHA solved: Q={req.question} A={answer} (raw={raw[:60]!r}) device={req.device_id} time={elapsed:.1f}s")
         return CaptchaSolveResponse(answer=answer, confidence="high")
 
     except Exception as e:
