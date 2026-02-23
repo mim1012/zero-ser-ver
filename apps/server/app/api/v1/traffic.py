@@ -39,13 +39,21 @@ except Exception as _e:
 
 _account_iter = itertools.cycle(_LOGIN_ACCOUNTS) if _LOGIN_ACCOUNTS else None
 _account_lock = threading.Lock()
+_SESSION_MAX_TASKS = 5          # 1계정당 연속 사용 횟수
+_current_account: tuple = ("", "")
+_account_task_count: int = 0    # 현재 계정으로 처리한 task 수
 
 def _next_account() -> tuple:
-    """다음 계정 (id, pw) 순환 반환. 계정 없으면 ('', '') 반환."""
+    """같은 계정을 _SESSION_MAX_TASKS 횟수만큼 연속 반환 후 다음 계정으로 전환."""
+    global _current_account, _account_task_count
     if _account_iter is None:
         return ("", "")
     with _account_lock:
-        return next(_account_iter)
+        if _account_task_count == 0 or _account_task_count >= _SESSION_MAX_TASKS:
+            _current_account = next(_account_iter)
+            _account_task_count = 0
+        _account_task_count += 1
+        return _current_account
 
 router = APIRouter()
 
