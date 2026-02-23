@@ -27,76 +27,13 @@ router = APIRouter()
 SCENARIOS = {
     "shopping_tab_v1": {
         "id": "shopping_tab_v1",
-        "name": "로그인 → 랜딩 → 쇼핑 검색결과 → MID 클릭 → 체류",
-        "version": 7,
+        "name": "랜딩 → 쇼핑 검색결과 → MID 클릭 → 체류",
+        "version": 8,
         "variables": {
             "mid": "{{task.nv_mid}}",
-            "landing_url": "{{task.target_url}}",
-            "login_id": "{{task.login_id}}",
-            "login_pw": "{{task.login_pw}}"
+            "landing_url": "{{task.target_url}}"
         },
         "steps": [
-            # ── 로그인 (이미 로그인된 경우 optional 스텝은 자동 스킵) ──
-            # L1. 네이버 로그인 페이지 이동 (이미 로그인 시 m.naver.com으로 리다이렉트)
-            {
-                "id": "l01_nav",
-                "action": "navigate",
-                "url": "https://nid.naver.com/nidlogin.login?mode=form&url=https%3A%2F%2Fm.naver.com",
-                "timeout": 20000
-            },
-            # L2. 페이지 안정화 대기
-            {
-                "id": "l02_wait",
-                "action": "delay",
-                "ms": [800, 1500]
-            },
-            # L3. 아이디 입력 (optional: 이미 로그인 시 #id 없음 → 무시)
-            {
-                "id": "l03_id",
-                "action": "humanType",
-                "selector": "#id",
-                "fallback": "input[name=id]",
-                "text": "{{login_id}}",
-                "clearFirst": True,
-                "optional": True
-            },
-            # L4. 딜레이
-            {
-                "id": "l04_delay",
-                "action": "delay",
-                "ms": [400, 700]
-            },
-            # L5. 비밀번호 입력 (optional)
-            {
-                "id": "l05_pw",
-                "action": "humanType",
-                "selector": "#pw",
-                "fallback": "input[name=pw]",
-                "text": "{{login_pw}}",
-                "clearFirst": True,
-                "optional": True
-            },
-            # L6. 딜레이
-            {
-                "id": "l06_delay",
-                "action": "delay",
-                "ms": [400, 600]
-            },
-            # L7. 로그인 버튼 클릭 (optional)
-            {
-                "id": "l07_btn",
-                "action": "tap",
-                "selector": ".btn_login",
-                "fallback": "input[type=submit]",
-                "waitNav": True,
-                "optional": True
-            },
-            # L8. 로그인 완료 대기
-            {
-                "id": "l08_done",
-                "action": "delay",
-                "ms": [2000, 3000]
-            },
             # ── 1. 랜딩페이지 방문 (referrer 생성) ──
             # meta refresh 1초 후 → m.search.naver.com 통합검색
             {
@@ -146,7 +83,7 @@ SCENARIOS = {
 
 # 활성 시나리오 + 가중치
 ACTIVE_SCENARIOS = [
-    {"id": "shopping_tab_v1", "version": 7, "weight": 100}
+    {"id": "shopping_tab_v1", "version": 8, "weight": 100}
 ]
 
 # ============================================================
