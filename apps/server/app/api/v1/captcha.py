@@ -79,7 +79,7 @@ async def solve_captcha(req: CaptchaSolveRequest):
                 json={
                     "model": "claude-haiku-4-5-20251001",
                     "max_tokens": 50,
-                    "system": "You are an OCR assistant. Read Korean receipt images and answer questions. Reply with ONLY the answer (a single number or character). Never explain.",
+                    "system": "You are an OCR assistant. Read Korean receipt images and answer questions accurately. Reply with ONLY the answer (a number, word, or short phrase — exactly as it appears on the receipt). Never explain or add extra text.",
                     "messages": [{
                         "role": "user",
                         "content": [
@@ -97,7 +97,7 @@ async def solve_captcha(req: CaptchaSolveRequest):
                                     "아래는 가상 영수증 이미지입니다.\n"
                                     "먼저 영수증의 모든 텍스트를 읽은 후,\n"
                                     f"다음 질문에 답하세요: {req.question}\n\n"
-                                    "정답만 출력하세요 (숫자 1개 또는 글자 1개)."
+                                    "정답만 출력하세요. 영수증에 적힌 그대로 (숫자, 단어, 짧은 문구 가능)."
                                 )
                             }
                         ]
