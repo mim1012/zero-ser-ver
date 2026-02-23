@@ -20,6 +20,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 애플리케이션 코드 복사
 COPY apps/server/app /app/app
 
+# 계정 목록 복사
+COPY apps/server/loginlist.xlsx /app/loginlist.xlsx
+
 # 포트 노출 (Railway는 PORT 환경 변수를 자동으로 주입)
 EXPOSE 8080
 

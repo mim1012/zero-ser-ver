@@ -21,7 +21,7 @@ LANDING_DOMAIN = os.getenv("LANDING_DOMAIN", "adpangshopping.co.kr")
 _LOGIN_ACCOUNTS: list = []
 try:
     import openpyxl as _openpyxl
-    _xlsx = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../../loginlist.xlsx")
+    _xlsx = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../loginlist.xlsx")
     if os.path.exists(_xlsx):
         _wb = _openpyxl.load_workbook(_xlsx, read_only=True, data_only=True)
         _ws = _wb.active
