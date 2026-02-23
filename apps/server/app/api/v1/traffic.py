@@ -11,9 +11,41 @@ from datetime import datetime
 import os
 import string
 import random
+import itertools
+import threading
 from app.database.supabase_client import get_supabase_production
 
 LANDING_DOMAIN = os.getenv("LANDING_DOMAIN", "adpangshopping.co.kr")
+
+# ── 네이버 로그인 계정 로드 (loginlist.xlsx) ─────────────────
+_LOGIN_ACCOUNTS: list = []
+try:
+    import openpyxl as _openpyxl
+    _xlsx = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../../loginlist.xlsx")
+    if os.path.exists(_xlsx):
+        _wb = _openpyxl.load_workbook(_xlsx, read_only=True, data_only=True)
+        _ws = _wb.active
+        for _row in _ws.iter_rows(min_row=1, values_only=True):
+            if _row[0] and _row[1]:
+                _LOGIN_ACCOUNTS.append((str(_row[0]).strip(), str(_row[1]).strip()))
+        _wb.close()
+        print(f"[계정] {len(_LOGIN_ACCOUNTS)}개 로드 완료 (loginlist.xlsx)")
+    else:
+        print(f"[계정] loginlist.xlsx 없음 ({_xlsx})")
+except ImportError:
+    print("[계정] openpyxl 없음 → pip install openpyxl")
+except Exception as _e:
+    print(f"[계정] 로드 실패: {_e}")
+
+_account_iter = itertools.cycle(_LOGIN_ACCOUNTS) if _LOGIN_ACCOUNTS else None
+_account_lock = threading.Lock()
+
+def _next_account() -> tuple:
+    """다음 계정 (id, pw) 순환 반환. 계정 없으면 ('', '') 반환."""
+    if _account_iter is None:
+        return ("", "")
+    with _account_lock:
+        return next(_account_iter)
 
 router = APIRouter()
 
@@ -35,6 +67,8 @@ class ClaimWorkResponse(BaseModel):
     nv_mid: str              # slot_naverapp.mid
     short_keyword: str       # traffic.keyword (풀네임)
     target_url: Optional[str] = None  # traffic.link_url
+    login_id: Optional[str] = ""     # 네이버 로그인 ID
+    login_pw: Optional[str] = ""     # 네이버 로그인 PW
 
 class ClaimWorkBatchResponse(BaseModel):
     tasks: list[ClaimWorkResponse]
@@ -220,13 +254,17 @@ def _claim_one(prod) -> Optional[ClaimWorkResponse]:
     # 5) 랜딩 URL 조합
     landing_url = _get_or_create_landing_slug(prod, slot_id or 0, keyword, product_name, link_url)
 
+    login_id, login_pw = _next_account()
+
     return ClaimWorkResponse(
         traffic_id=traffic_id,
         slot_id=slot_id or 0,
         product_name=product_name,
         nv_mid=mid,
         short_keyword=keyword,
-        target_url=landing_url
+        target_url=landing_url,
+        login_id=login_id,
+        login_pw=login_pw,
     )
 
 # ============================================================
